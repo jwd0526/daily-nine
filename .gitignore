@@ -1,0 +1,16 @@
+node_modules
+dist
+.DS_Store
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa
+id_ed25519
+*.pfx
+*.p12
+.aws/
+.gcloud/

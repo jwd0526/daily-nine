@@ -11,6 +11,7 @@ import {
 } from './geom.ts';
 import { arcLengths, fairwayPoint, frameAt, totalLength } from './centerline.ts';
 import { applyFeatures, type CourseBudget } from './features.ts';
+import { placeTrees } from './trees.ts';
 
 export type Archetype =
   | 'short3' | 'mid3' | 'long3'
@@ -345,6 +346,7 @@ export function buildHole(ctx: HoleContext, rngs: RngFactory, attempt: number): 
   }
 
   applyFeatures(draft, ctx, rngs(`${key}:features`));
+  placeTrees(draft, ctx.biome, ctx.style, rngs(`${key}:trees`));
 
   const edge: Vec[] = [];
   for (let s = -30; s <= L + 40; s += 10) {

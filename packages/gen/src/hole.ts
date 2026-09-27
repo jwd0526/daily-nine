@@ -10,6 +10,7 @@ import {
   headingOf, lerp, pointInPoly, round1, roundPoly, roundVec, scale, sub,
 } from './geom.ts';
 import { arcLengths, fairwayPoint, frameAt, totalLength } from './centerline.ts';
+import { applyFeatures, type CourseBudget } from './features.ts';
 
 export type Archetype =
   | 'short3' | 'mid3' | 'long3'
@@ -43,6 +44,7 @@ export interface HoleContext {
   difficulty: number;
   biome: Biome;
   wind: Wind;
+  budget: CourseBudget;
   style: CourseStyle;
   archetype: Archetype;
   /** Preferred turning direction for this hole's main bend (+1 right, -1 left). */
@@ -342,6 +344,7 @@ export function buildHole(ctx: HoleContext, rngs: RngFactory, attempt: number): 
     }
   }
 
+  applyFeatures(draft, ctx, rngs(`${key}:features`));
 
   const edge: Vec[] = [];
   for (let s = -30; s <= L + 40; s += 10) {

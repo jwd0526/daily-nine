@@ -51,6 +51,8 @@ export interface HoleFeature {
 
 const WATER_AFFINITY: Record<Biome, number> = { links: 1.1, parkland: 1.4, heath: 0.8, desert: 0.5, alpine: 1.0 };
 const SAND_AFFINITY: Record<Biome, number> = { links: 1.4, parkland: 1, heath: 1.1, desert: 1.3, alpine: 0.8 };
+const WASTE_AFFINITY: Record<Biome, number> = { links: 0.8, parkland: 0.1, heath: 1.2, desert: 2.2, alpine: 0.3 };
+const POT_AFFINITY: Record<Biome, number> = { links: 2.2, parkland: 0.2, heath: 0.9, desert: 0.3, alpine: 0.3 };
 
 /** Bodies of water must stay at least this far apart (no merged or touching lakes). */
 const WATER_GAP = 10;
@@ -101,6 +103,12 @@ function addWater(h: HoleDraft, region: Region, opts: { greenMargin: number; tee
   if (!h.bunkers.every((b) => !polysOverlap(poly, b, opts.hazardMargin ?? 3))) return false;
   if (!(h.waste ?? []).every((w) => !polysOverlap(poly, w, opts.hazardMargin ?? 3))) return false;
   h.water.push({ outer: roundPoly(poly), ...(region.holes ? { holes: region.holes.map(roundPoly) } : {}) });
+  return true;
+}
+
+function addWaste(h: HoleDraft, poly: Poly): boolean {
+  if (!isSimplePolygon(poly) || !clearOfGreen(h, poly, 4) || !clearOfTee(h, poly, 25) || !clearOfHazards(h, poly, 2)) return false;
+  (h.waste ??= []).push(roundPoly(poly));
   return true;
 }
 
@@ -217,6 +225,46 @@ const fairwayBunker: HoleFeature = {
   },
 };
 
+/** A bunker sitting in the middle of the fairway past the landing zone: go left or right of it. */
+const centerBunker: HoleFeature = {
+  id: 'center-bunker',
+  group: 'center',
+  eligible: ({ hole }) => hole.par !== 3 && hole.L - hole.lzS[0] > 130,
+  weight: (f) => (0.3 + 0.8 * f.ctx.difficulty) * sandW(f),
+  apply({ hole, rng }) {
+    for (let k = 0; k < 6; k++) {
+      const s = hole.lzS[0] + rng.range(35, 65);
+      if (s > hole.L - 60) return false;
+      const f = frameAt(hole.centerline, s);
+      const poly = blob(rng, fairwayPoint(hole.centerline, s, rng.range(-3, 3)), rng.range(3.5, 5), rng.range(4, 7), f.heading, 0.25, 22);
+      if (clearOfLandingZones(hole, poly, 20) && addBunker(hole, poly)) return true;
+    }
+    return false;
+  },
+};
+
+/** Small, deep pot bunkers scattered around the landing area (classic links). */
+const potBunkers: HoleFeature = {
+  id: 'pot-bunkers',
+  group: 'pots',
+  eligible: ({ hole }) => hole.par !== 3,
+  weight: (f) => POT_AFFINITY[f.ctx.biome] * f.ctx.style.sand * (0.5 + f.ctx.difficulty),
+  apply({ hole, rng }) {
+    const n = rng.int(3, 6);
+    let placed = 0;
+    for (let k = 0; k < n * 4 && placed < n; k++) {
+      const z = hole.lzS[rng.int(0, hole.lzS.length - 1)];
+      const s = z + rng.range(-55, 70);
+      if (s < 60 || s > hole.L - 30) continue;
+      const w = frameAt(hole.centerline, s).w;
+      const poly = blob(rng, fairwayPoint(hole.centerline, s, rng.range(-w - 6, w + 6)), rng.range(1.8, 2.8), rng.range(1.8, 2.8), 0, 0.15, 14);
+      if (!clearOfLandingZones(hole, poly, 11)) continue;
+      if (addBunker(hole, poly)) placed++;
+    }
+    return placed >= 2;
+  },
+};
+
 /** Inside of a dogleg: punishes cutting the corner too aggressively. */
 function cornerFeature(kind: 'bunker' | 'water'): HoleFeature {
   return {
@@ -266,6 +314,72 @@ const crossBunkers: HoleFeature = {
       if (addBunker(hole, blob(rng, c, rng.range(4, 6.5), rng.range(2.5, 4), f.heading, 0.3, 20))) placed++;
     }
     return placed > 0;
+  },
+};
+
+/** Sandy scrub running down one side of the fairway. */
+const wasteFlank: HoleFeature = {
+  id: 'waste-flank',
+  tag: 'WASTE',
+  group: 'waste',
+  eligible: ({ hole }) => hole.L > 150,
+  weight: (f) => 0.6 * WASTE_AFFINITY[f.ctx.biome] * f.ctx.style.sand * (0.6 + f.ctx.difficulty),
+  apply({ hole, rng }) {
+    for (let k = 0; k < 6; k++) {
+      const side = rng.sign();
+      const len = Math.min(hole.L * 0.55, rng.range(70, 170));
+      const s0 = rng.range(50, Math.max(55, hole.L - len - 30));
+      const s1 = s0 + len;
+      const nIn = rng.noise1d(25), nOut = rng.noise1d(35);
+      const depth = rng.range(14, 28);
+      const inner: Vec[] = [], outer: Vec[] = [];
+      for (let s = s0; s <= s1; s += 4) {
+        // sqrt(sin) gives rounded, blunt ends rather than needle points.
+        const taper = Math.sqrt(Math.sin(((s - s0) / (s1 - s0)) * Math.PI));
+        // The outer edge always sits beyond the inner one, so the shape never folds.
+        const innerX = 2 + (1 - taper) * 10 + nIn(s) * 3;
+        inner.push(besideFairway(hole, s, side, innerX));
+        outer.push(besideFairway(hole, s, side, innerX + 3 + taper * depth + Math.abs(nOut(s)) * 4));
+      }
+      const poly = [...inner, ...outer.reverse()];
+      if (!clearOfLandingZones(hole, poly, 8)) continue;
+      if (addWaste(hole, poly)) return true;
+    }
+    return false;
+  },
+};
+
+/** A broad sandy band across the hole that the tee shot or approach must carry. */
+const wasteCross: HoleFeature = {
+  id: 'waste-cross',
+  tag: 'WASTE',
+  group: 'cross',
+  eligible: ({ hole }) => hole.par !== 3,
+  weight: (f) => WASTE_AFFINITY[f.ctx.biome] * f.ctx.style.sand * (0.3 + 0.6 * f.ctx.difficulty),
+  apply({ hole, rng }) {
+    const windows = carryWindows(hole, 30, 25, 100);
+    if (!windows.length) return false;
+    for (let k = 0; k < 6; k++) {
+      const [a, b] = rng.pick(windows);
+      const s = rng.range(a, b);
+      const f = frameAt(hole.centerline, s);
+      const across = dirFromHeading(f.heading + 90 * DEG + rng.range(-20, 20) * DEG);
+      // A gently bowed band that stays inside the corridor and tapers to rounded ends.
+      const reach = f.ob * rng.range(0.7, 0.95);
+      const bow = rng.range(-8, 8);
+      const line: Vec[] = [];
+      for (let t = -reach; t <= reach; t += 3) {
+        const u = t / reach;
+        line.push(add(add(f.p, scale(across, t)), scale(f.fwd, bow * (1 - u * u))));
+      }
+      const hw = rng.range(6, 10);
+      const n = rng.noise1d(10);
+      const last = line.length - 1;
+      const poly = stripPoly(line, (i) => (hw + n(i * 3) * 2) * Math.sqrt(Math.sin((i / last) * Math.PI)) + 0.3);
+      if (!clearOfLandingZones(hole, poly, 20)) continue;
+      if (addWaste(hole, poly)) return true;
+    }
+    return false;
   },
 };
 
@@ -337,6 +451,56 @@ const lateralWater: HoleFeature = {
   },
 };
 
+/** A narrow creek meandering alongside the fairway in the rough. */
+const creek: HoleFeature = {
+  id: 'creek',
+  tag: 'CREEK',
+  group: 'water',
+  water: true,
+  eligible: (f) => f.hole.L > 200 && waterAllowed(f),
+  weight: (f) => (f.ctx.biome === 'parkland' || f.ctx.biome === 'alpine' ? 1.6 : 0.7) * f.ctx.style.water * (0.5 + f.ctx.difficulty),
+  apply({ hole, rng }) {
+    for (let k = 0; k < 6; k++) {
+      const side = rng.sign();
+      const len = Math.min(hole.L * 0.75, rng.range(110, 240));
+      const s0 = rng.range(60, Math.max(65, hole.L - len - 25));
+      const n = rng.noise1d(40);
+      const line: Vec[] = [];
+      for (let s = s0; s <= s0 + len; s += 4) line.push(besideFairway(hole, s, side, 7 + n(s) * 4));
+      const hw = rng.range(1.6, 2.6);
+      const last = line.length - 1;
+      // Narrows at both ends so it seems to emerge and disappear rather than stop.
+      const poly = stripPoly(line, (i) => 0.4 + hw * Math.sqrt(Math.sin((i / last) * Math.PI)));
+      if (!clearOfLandingZones(hole, poly, 8)) continue;
+      if (addWater(hole, { outer: poly }, { greenMargin: 6, teeR: 35, hazardMargin: 2 })) return true;
+    }
+    return false;
+  },
+};
+
+/** A pond tucked beside or behind the green: the aggressive line flirts with it. */
+const greenPond: HoleFeature = {
+  id: 'green-pond',
+  group: 'water',
+  water: true,
+  eligible: (f) => f.hole.par !== 3 && waterAllowed(f),
+  weight: (f) => (f.ctx.archetype === 'reachable5' || f.ctx.archetype === 'drivable4' ? 3 : 0.9) * waterW(f) * (0.5 + f.ctx.difficulty),
+  apply({ hole, rng }) {
+    const fwd = approachHeading(hole);
+    for (let k = 0; k < 8; k++) {
+      const a = rng.sign() * rng.range(45, 140);
+      const heading = fwd + a * DEG;
+      const r = rng.range(9, 16);
+      const edge = greenEdgeDist(hole, heading);
+      const center = add(hole.green.center, scale(dirFromHeading(heading), edge + hole.fringeWidth + r + rng.range(3, 6)));
+      const poly = blob(rng, center, r, r * rng.range(0.8, 1.4), heading, 0.15, 28);
+      if (!clearOfLandingZones(hole, poly, 12)) continue;
+      if (addWater(hole, { outer: poly }, { greenMargin: 2.5, teeR: 40 })) return true;
+    }
+    return false;
+  },
+};
+
 /** Par 3 with a pond between tee and green: a forced carry. */
 const frontPond: HoleFeature = {
   id: 'front-pond',
@@ -401,10 +565,16 @@ export const FEATURES: HoleFeature[] = [
   islandGreen,
   frontPond,
   lateralWater,
+  creek,
+  greenPond,
   burn,
   cornerFeature('water'),
   cornerFeature('bunker'),
   crossBunkers,
+  wasteCross,
+  wasteFlank,
+  centerBunker,
+  potBunkers,
   fairwayBunker,
   greenside,
 ];

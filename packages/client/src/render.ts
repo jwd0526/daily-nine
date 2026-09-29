@@ -44,6 +44,7 @@ export interface Camera { cx: number; cy: number; k: number }
 export interface Overlay {
   ball?: Vec & { h?: number };
   trail?: PathPoint[];
+  aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string };
   debug?: boolean;
 }
 
@@ -424,6 +425,7 @@ export class Renderer {
     c.fill();
 
     if (o.debug) this.drawDebug(hole);
+    if (o.aim) this.drawAim(o.aim);
     if (o.trail && o.trail.length > 1) {
       c.strokeStyle = 'rgba(255,255,255,0.75)';
       c.lineWidth = 2;
@@ -434,6 +436,116 @@ export class Renderer {
     }
     if (o.ball) this.drawBall(o.ball);
     c.restore();
+  }
+
+  private drawAim(a: NonNullable<Overlay['aim']>) {
+    const c = this.ctx;
+    const k = this.cam.k;
+    const dir = { x: Math.sin(a.heading), y: Math.cos(a.heading) };
+    const end = { x: a.from.x + dir.x * a.dist, y: a.from.y + dir.y * a.dist };
+    if (a.cone && !a.locked) this.drawCone(a.from, a.cone.center, a.cone.half, a.dist);
+    if (a.wind) this.drawWindTrail(a.from, a.locked || !a.cone ? a.heading : a.cone.center, a.dist, a.wind);
+    c.strokeStyle = a.locked ? '#b5532f' : '#c08a2e';
+    c.lineWidth = 3;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(this.sx(a.from), this.sy(a.from));
+    c.lineTo(this.sx(end), this.sy(end));
+    c.stroke();
+    // Reticle: a dashed ring marking where a full swing can randomly land, a center dot,
+    // and four short ticks that cross the ring at each quarter.
+    const x = this.sx(end), y = this.sy(end);
+    const r = Math.max(5, (a.spray ?? 4) * k);
+    const t = Math.max(3, Math.min(6, r * 0.35)); // tick half-length either side of the ring
+    c.save();
+    c.globalAlpha = 0.6;
+    c.lineCap = 'round';
+    const ticks = () => {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        c.moveTo(x + dx * (r - t), y + dy * (r - t));
+        c.lineTo(x + dx * (r + t), y + dy * (r + t));
+      }
+    };
+    // Light halo under dark ink so it reads on any ground.
+    for (const [color, width] of [['rgba(255,255,255,0.35)', 3.5], ['rgba(22,32,26,0.95)', 1.6]] as const) {
+      c.strokeStyle = color;
+      c.lineWidth = width;
+      c.setLineDash([3, 3]);
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.stroke();
+      c.setLineDash([]);
+      c.beginPath();
+      ticks();
+      c.stroke();
+    }
+    c.fillStyle = 'rgba(22,32,26,0.95)';
+    c.beginPath();
+    c.arc(x, y, 2, 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 1;
+    const arm = r + t;
+    // Shot distance beside the reticle (animates when the club changes).
+    if (a.label) {
+      c.font = '600 12px Inter, system-ui, sans-serif';
+      c.textAlign = 'left';
+      c.textBaseline = 'middle';
+      c.lineJoin = 'round';
+      c.lineWidth = 3;
+      c.strokeStyle = 'rgba(20,38,28,0.8)';
+      c.strokeText(a.label, x + arm + 5, y);
+      c.fillStyle = '#eef3ea';
+      c.fillText(a.label, x + arm + 5, y);
+    }
+    c.restore();
+  }
+
+  /** Faint dotted curve off the center line, fading as it goes, showing roughly how the wind bends a full swing. */
+  private drawWindTrail(from: Vec, heading: number, dist: number, drift: Vec) {
+    if (Math.hypot(drift.x, drift.y) < 0.75) return;
+    const c = this.ctx;
+    const dir = { x: Math.sin(heading), y: Math.cos(heading) };
+    // Drift grows with the square of progress, matching the ball's flight.
+    const at = (u: number) => {
+      const p = { x: from.x + dir.x * dist * u + drift.x * u * u, y: from.y + dir.y * dist * u + drift.y * u * u };
+      return { x: this.sx(p), y: this.sy(p) };
+    };
+    // One dot per few yards of flight: longer shots get more dots, and zoom never changes the count.
+    const YARDS_PER_DOT = 8;
+    const DOTS = Math.max(8, Math.round(dist / YARDS_PER_DOT));
+    c.save();
+    c.fillStyle = 'rgb(40,50,44)';
+    for (let i = 1; i <= DOTS; i++) {
+      const u = i / DOTS;
+      const p = at(u);
+      // Fades evenly over the whole line, from the ball to the end of the flight.
+      // Fades all the way out by the end of the flight.
+      c.globalAlpha = 0.55 * (1 - u);
+      c.beginPath();
+      // Dots grow gently along the line (radius in screen px).
+      c.arc(p.x, p.y, 0.8 + 1.1 * u, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+  }
+
+  private drawCone(from: Vec, center: number, half: number, dist: number) {
+    const c = this.ctx;
+    const ray = (h: number) => {
+      const e = { x: from.x + Math.sin(h) * dist, y: from.y + Math.cos(h) * dist };
+      c.beginPath();
+      c.moveTo(this.sx(from), this.sy(from));
+      c.lineTo(this.sx(e), this.sy(e));
+      c.stroke();
+    };
+    // Solid edges.
+    c.strokeStyle = 'rgba(40,50,44,0.5)';
+    c.lineWidth = 1.2;
+    ray(center - half);
+    ray(center + half);
+    // Center line: solid but fainter than the edges.
+    c.strokeStyle = 'rgba(40,50,44,0.32)';
+    ray(center);
   }
 
   private drawBall(b: Vec & { h?: number }) {

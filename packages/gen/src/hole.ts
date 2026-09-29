@@ -3,7 +3,7 @@
 //
 //   skeleton → centerline → width profile → green → features (hazards) → trees → scenery
 
-import type { Biome, Centerline, CourseStyle, Hole, Vec, Wind } from './types.ts';
+import type { Biome, Centerline, CourseStyle, GreenSlope, Hole, Vec, Wind } from './types.ts';
 import type { Rng, RngFactory } from './rng.ts';
 import {
   add, bounds, catmullRomResample, clamp, dirFromHeading, distToPolyEdge,
@@ -11,6 +11,7 @@ import {
 } from './geom.ts';
 import { arcLengths, fairwayPoint, frameAt, totalLength } from './centerline.ts';
 import { applyFeatures, type CourseBudget } from './features.ts';
+import { slopeHeight } from './surface.ts';
 import { placeTrees } from './trees.ts';
 import { placeScenery } from './scenery.ts';
 
@@ -219,6 +220,75 @@ function buildCenterline(sk: Skeleton, ctx: HoleContext, rng: Rng) {
 // ---------------------------------------------------------------------------
 // 3d. Green
 
+/** Steepest slope allowed anywhere on a green (rise per yard), so balls can't run off it. */
+const MAX_GREEN_GRADE = 0.045;
+
+/**
+ * Green topology: an overall tilt, several mounds/hollows (some stretched into ridges
+ * or swales), optional tiers, and a gentle undulation. More features on harder holes.
+ */
+function buildGreenSlope(rng: Rng, center: Vec, r: number, poly: Vec[], diff: number): GreenSlope {
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const round3 = (x: number) => Math.round(x * 1000) / 1000;
+  const randomPoint = (spread: number) =>
+    add(center, scale(dirFromHeading(rng.range(0, Math.PI * 2)), rng.range(0, r * spread)));
+
+  const tilt = rng.range(0.004, 0.012 + 0.012 * diff);
+  const tiltDir = rng.range(0, Math.PI * 2);
+
+  const bumps: GreenSlope['bumps'] = [];
+  const nBumps = rng.int(2, 3) + Math.round(diff * 3 * rng.float());
+  for (let i = 0; i < nBumps; i++) {
+    const p = randomPoint(0.85);
+    const ridge = rng.chance(0.4);
+    bumps.push({
+      x: round1(p.x), y: round1(p.y),
+      r: round1(rng.range(2.5, 6.5)),
+      h: round2(rng.range(0.12, 0.42) * rng.sign()),
+      ...(ridge ? { sx: round1(rng.range(1.6, 3)), rot: round2(rng.range(0, Math.PI)) } : {}),
+    });
+  }
+
+  const tiers: NonNullable<GreenSlope['tiers']> = [];
+  const nTiers = rng.chance(0.3 + 0.35 * diff) ? (r > 14 && rng.chance(0.35) ? 2 : 1) : 0;
+  for (let i = 0; i < nTiers; i++) {
+    const p = randomPoint(0.4);
+    tiers.push({ x: round1(p.x), y: round1(p.y), dir: round2(rng.range(0, Math.PI * 2)), h: round2(rng.range(0.22, 0.5)), w: round1(rng.range(1.2, 2.6)) });
+  }
+
+  const waves: NonNullable<GreenSlope['waves']> = [];
+  for (let i = 0, n = rng.int(1, 2); i < n; i++) {
+    const k = (Math.PI * 2) / rng.range(8, 16);
+    const a = rng.range(0, Math.PI * 2);
+    waves.push({ kx: round3(Math.sin(a) * k), ky: round3(Math.cos(a) * k), ph: round2(rng.range(0, Math.PI * 2)), a: round2(rng.range(0.03, 0.07)) });
+  }
+
+  let slope: GreenSlope = { gx: Math.sin(tiltDir) * tilt, gy: Math.cos(tiltDir) * tilt, bumps, tiers, waves };
+
+  // Cap the steepest point so the green stays puttable; scale everything down together.
+  let steepest = 0;
+  const b = bounds(poly);
+  const e = 0.25;
+  for (let x = b.minX; x <= b.maxX; x += 1) {
+    for (let y = b.minY; y <= b.maxY; y += 1) {
+      const p = { x, y };
+      if (!pointInPoly(p, poly)) continue;
+      const gx = (slopeHeight(slope, center, { x: x + e, y }) - slopeHeight(slope, center, { x: x - e, y })) / (2 * e);
+      const gy = (slopeHeight(slope, center, { x, y: y + e }) - slopeHeight(slope, center, { x, y: y - e })) / (2 * e);
+      steepest = Math.max(steepest, Math.hypot(gx, gy));
+    }
+  }
+  const k = steepest > MAX_GREEN_GRADE ? MAX_GREEN_GRADE / steepest : 1;
+  slope = {
+    gx: Math.round(slope.gx * k * 10000) / 10000,
+    gy: Math.round(slope.gy * k * 10000) / 10000,
+    bumps: bumps.map((m) => ({ ...m, h: Math.round(m.h * k * 1000) / 1000 })),
+    tiers: tiers.map((t) => ({ ...t, h: Math.round(t.h * k * 1000) / 1000 })),
+    waves: waves.map((w) => ({ ...w, a: Math.round(w.a * k * 1000) / 1000 })),
+  };
+  return slope;
+}
+
 type GreenShape = 'oval' | 'kidney' | 'boomerang' | 'long' | 'wide';
 
 /** Green outline as a radial function with a few character-defining harmonics. */
@@ -265,7 +335,7 @@ function buildGreen(draft: HoleDraft, rng: Rng) {
   const { poly: raw, rx, ry } = greenPoly(rng, shape, center, r, approach.heading + rng.gauss(0, 0.3));
   const poly = roundPoly(raw);
 
-  draft.green = { poly, center: roundVec(center), slope: { gx: 0, gy: 0, bumps: [] } };
+  draft.green = { poly, center: roundVec(center), slope: buildGreenSlope(rng, center, r, poly, diff) };
   draft.greenR = r;
 
   // Pin: at least 4 yards inside the edge.

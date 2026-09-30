@@ -1,5 +1,5 @@
 import type { Biome, Hole, Poly, Vec, PathPoint, SceneryKind } from '@golf/gen';
-import { frameAt, fairwaySegments, fairwayWidthAt, TEE_BOX, GREEN_APRON, geom } from '@golf/gen';
+import { frameAt, fairwaySegments, fairwayWidthAt, greenGradient, greenHeight, TEE_BOX, PUTT_RINGS, MAX_PUTTS, GREEN_APRON, geom } from '@golf/gen';
 
 interface Palette {
   bg: string; rough: string; fairway: string; stripe: string; fringe: string; green: string;
@@ -46,12 +46,56 @@ export interface Overlay {
   trail?: PathPoint[];
   aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string };
   debug?: boolean;
+  /** Show the green's break: height shading and downhill arrows. */
+  greenBreak?: boolean;
 }
 
 export function fitCamera(b: { minX: number; minY: number; maxX: number; maxY: number }, w: number, h: number, pad = 12): Camera {
   const bw = b.maxX - b.minX + pad * 2;
   const bh = b.maxY - b.minY + pad * 2;
   return { cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, k: Math.min(w / bw, h / bh) };
+}
+
+const BREAK_CELL = 0.75;
+/** Height map color at the lowest point (fades to white at the highest). */
+const LOW = [46, 112, 196];
+const breakCache = new WeakMap<Hole, HTMLCanvasElement>();
+
+/** Green height shading as a tiny image (one pixel per cell), cached per hole. */
+function breakImage(hole: Hole): HTMLCanvasElement {
+  const cached = breakCache.get(hole);
+  if (cached) return cached;
+  const cell = BREAK_CELL;
+  const b = geom.bounds(hole.green.poly);
+  const cols = Math.ceil((b.maxX - b.minX) / cell) + 1;
+  const rows = Math.ceil((b.maxY - b.minY) / cell) + 1;
+  const hs = new Float32Array(cols * rows);
+  let lo = Infinity, hi = -Infinity;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      // Row 0 is the top of the screen (highest y).
+      const h = greenHeight(hole, { x: b.minX + i * cell, y: b.maxY - j * cell });
+      hs[j * cols + i] = h;
+      lo = Math.min(lo, h); hi = Math.max(hi, h);
+    }
+  }
+  const span = hi - lo || 1;
+  const off = document.createElement('canvas');
+  off.width = cols;
+  off.height = rows;
+  const octx = off.getContext('2d')!;
+  const img = octx.createImageData(cols, rows);
+  for (let n = 0; n < hs.length; n++) {
+    // Lowest ground is blue, highest is white.
+    const t = (hs[n] - lo) / span;
+    img.data[n * 4] = Math.round(LOW[0] + (255 - LOW[0]) * t);
+    img.data[n * 4 + 1] = Math.round(LOW[1] + (255 - LOW[1]) * t);
+    img.data[n * 4 + 2] = Math.round(LOW[2] + (255 - LOW[2]) * t);
+    img.data[n * 4 + 3] = 205;
+  }
+  octx.putImageData(img, 0, 0);
+  breakCache.set(hole, off);
+  return off;
 }
 
 /** How far (yards) the course fades out beyond the out-of-bounds line. */
@@ -332,6 +376,8 @@ export class Renderer {
     c.fill();
     c.restore();
 
+    if (o.greenBreak) this.drawBreak(hole);
+    this.drawPuttRings(hole);
 
     // Tee box.
     c.save();
@@ -435,6 +481,91 @@ export class Renderer {
       c.stroke();
     }
     if (o.ball) this.drawBall(o.ball);
+    c.restore();
+  }
+
+  /** Green break: blue (low) to white (high) height map, with arrows pointing downhill. */
+  private drawBreak(hole: Hole) {
+    const c = this.ctx;
+    const k = this.cam.k;
+    const b = geom.bounds(hole.green.poly);
+    c.save();
+    c.beginPath();
+    this.poly(hole.green.poly);
+    c.clip();
+
+    // Height shading, normalized to this green's range: one pixel per cell on an
+    // offscreen canvas, scaled up with smoothing so it reads as a soft gradient.
+    const cell = BREAK_CELL;
+    const off = breakImage(hole);
+    const cols = off.width, rows = off.height;
+    c.imageSmoothingEnabled = true;
+    c.drawImage(off, this.sx({ x: b.minX, y: 0 }), this.sy({ x: 0, y: b.maxY }), (cols - 1) * cell * k, (rows - 1) * cell * k);
+
+    // Downhill arrows; longer means steeper.
+    const step = Math.max(1.5, 26 / k);
+    c.strokeStyle = 'rgba(35,70,45,0.6)';
+    c.fillStyle = 'rgba(35,70,45,0.6)';
+    c.lineWidth = 1.4;
+    for (let x = b.minX + step / 2; x <= b.maxX; x += step) {
+      for (let y = b.minY + step / 2; y <= b.maxY; y += step) {
+        const p = { x, y };
+        if (!geom.pointInPoly(p, hole.green.poly)) continue;
+        const g = greenGradient(hole, p);
+        const m = Math.hypot(g.x, g.y);
+        if (m < 0.002) continue;
+        const l = (0.3 + 0.7 * Math.min(1, m / 0.035)) * step * 0.75 * k;
+        // Screen y is flipped, so downhill (-g) is (-g.x, +g.y) on screen.
+        const ux = -g.x / m, uy = g.y / m;
+        const x0 = this.sx(p) - (ux * l) / 2, y0 = this.sy(p) - (uy * l) / 2;
+        const x1 = x0 + ux * l, y1 = y0 + uy * l;
+        c.beginPath();
+        c.moveTo(x0, y0);
+        c.lineTo(x1, y1);
+        c.stroke();
+        const hd = Math.min(6, l * 0.35);
+        c.beginPath();
+        c.moveTo(x1, y1);
+        c.lineTo(x1 - ux * hd - uy * hd * 0.6, y1 - uy * hd + ux * hd * 0.6);
+        c.lineTo(x1 - ux * hd + uy * hd * 0.6, y1 - uy * hd - ux * hd * 0.6);
+        c.closePath();
+        c.fill();
+      }
+    }
+    c.restore();
+  }
+
+  /** Putt rings around the pin, clipped to the green: where the ball stops decides the putts. */
+  private drawPuttRings(hole: Hole) {
+    const c = this.ctx;
+    const k = this.cam.k;
+    const px = this.sx(hole.pin), py = this.sy(hole.pin);
+    c.save();
+    c.beginPath();
+    this.poly(hole.green.poly);
+    c.clip();
+    const radii = PUTT_RINGS.map((r) => r.r);
+    // Inner rings are tinted a little deeper.
+    for (let i = radii.length - 1; i >= 0; i--) {
+      c.beginPath();
+      c.arc(px, py, radii[i] * k, 0, Math.PI * 2);
+      c.fillStyle = i === 0 ? 'rgba(80,140,90,0.18)' : 'rgba(80,140,90,0.09)';
+      c.fill();
+      c.setLineDash([3, 4]);
+      c.strokeStyle = 'rgba(60,100,70,0.55)';
+      c.lineWidth = 1.2;
+      c.stroke();
+      c.setLineDash([]);
+    }
+    if (k > 4) {
+      c.font = `600 ${Math.min(12, 2.2 * k)}px Inter, system-ui, sans-serif`;
+      c.fillStyle = 'rgba(50,85,60,0.75)';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      const labels = [...PUTT_RINGS.map((r) => r.putts), MAX_PUTTS];
+      const at = [radii[0] * 0.55, (radii[0] + radii[1]) / 2, radii[1] + 2.5];
+      labels.forEach((n, i) => c.fillText(`+${n}`, px, py + at[i] * k));
+    }
     c.restore();
   }
 

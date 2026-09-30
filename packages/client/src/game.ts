@@ -15,6 +15,18 @@ interface Saved {
 
 const MAX_POWER = 1.1;
 
+const EYE_PATHS = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+const svgIcon = (inner: string) =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+/** Green view on. */
+const EYE = svgIcon(EYE_PATHS);
+/** Green view off. */
+const EYE_OFF = svgIcon(`${EYE_PATHS}<path d="M3 3l18 18"/>`);
+/** Full hole view: corners pointing out, "full screen". */
+const VIEW_HOLE = svgIcon('<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>');
+/** Shot view (zoomed in on the shot): corners pointing in, "partial screen". */
+const VIEW_SHOT = svgIcon('<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>');
+
 // Power meter motion: nearly constant speed up to 95%, a sharp ramp over the last 5%,
 // then considerably faster through the overswing zone (and the same curve back down).
 const POWER_HALF_PERIOD = 0.95; // seconds for 0 → max
@@ -96,8 +108,15 @@ export class Game {
   private ballHeight = 0;
   /** True while the pointer is held down on the course, steering the aim. */
   private aiming = false;
+  /** Green break overlay (height map + downhill arrows) is shown. */
+  private greenView = false;
+  /** The player zoomed or panned by hand; auto-framing waits until the next shot. */
+  private manualCam = false;
   /** Shot view: zoomed in on the current shot. Off shows the whole hole. */
   private shotView = false;
+  /** Drag mode: dragging pans the course instead of aiming. */
+  private dragMode = false;
+  private panFrom?: { x: number; y: number };
 
   private cam: Camera = { cx: 0, cy: 0, k: 1 };
   private camTarget: Camera = { cx: 0, cy: 0, k: 1 };
@@ -173,7 +192,38 @@ export class Game {
     this.els.tr = h('div', 'hud tr');
     this.els.bl = h('div', 'hud bl');
     this.els.toast = h('div', 'toast');
-    this.stage.append(this.els.tl, this.els.tr, this.els.bl, this.els.toast);
+    const viewBtn = h('button', 'map-btn', EYE_OFF);
+    viewBtn.title = 'Green view';
+    viewBtn.onclick = () => this.setGreenView(!this.greenView);
+    this.els.viewBtn = viewBtn;
+    const mapControls = h('div', 'map-controls');
+    const zoomIn = h('button', 'map-btn', '+');
+    const zoomOut = h('button', 'map-btn', '−');
+    const drag = h('button', 'map-btn', '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5v-7a1.5 1.5 0 0 1 3 0V12"/><path d="M14 6.5a1.5 1.5 0 0 1 3 0V12"/><path d="M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-4.7-2.3L4.6 15.3a1.6 1.6 0 0 1 2.5-2l.9 1.2"/></svg>');
+    zoomIn.title = 'Zoom in';
+    zoomOut.title = 'Zoom out';
+    drag.title = 'Drag mode';
+    zoomIn.onclick = () => this.zoom(1.5);
+    zoomOut.onclick = () => this.zoom(1 / 1.5);
+    drag.onclick = () => this.setDragMode(!this.dragMode);
+    this.els.dragBtn = drag;
+    // Two view buttons: jump to the whole hole, or zoom in on the shot.
+    const holeBtn = h('button', 'map-btn', VIEW_HOLE);
+    holeBtn.title = 'Full hole';
+    holeBtn.onclick = () => this.setShotView(false);
+    const shotBtn = h('button', 'map-btn', VIEW_SHOT);
+    shotBtn.title = 'Shot view';
+    shotBtn.onclick = () => this.setShotView(true);
+    this.els.holeBtn = holeBtn;
+    this.els.shotBtn = shotBtn;
+    mapControls.append(zoomIn, zoomOut, drag, viewBtn, holeBtn, shotBtn);
+    // Legend: what the lines on the course mean (plus the height scale when green view is on).
+    const legend = h('div', 'legend',
+      `<div class="legend-row"><svg viewBox="0 0 28 8"><line x1="1" y1="4" x2="27" y2="4" stroke="#c08a2e" stroke-width="2.5" stroke-linecap="round"/></svg>Target line</div>` +
+      `<div class="legend-row"><svg viewBox="0 0 28 8">${[0, 1, 2, 3, 4, 5, 6].map((i) => `<circle cx="${2 + i * 4}" cy="4" r="${0.9 + i * 0.13}" fill="currentColor" opacity="${0.9 - i * 0.1}"/>`).join('')}</svg>Wind line</div>` +
+      `<div class="legend-row legend-topo"><span class="topo-bar"></span><span class="topo-labels"><span>Low</span><span>High</span></span></div>`);
+    this.els.legend = legend;
+    this.stage.append(this.els.tl, this.els.tr, this.els.bl, this.els.toast, mapControls, legend);
     r.append(this.stage);
 
     const controls = h('div', 'controls');
@@ -300,7 +350,7 @@ export class Game {
     this.shownSpray = sprayRadius(this.club, geom.dist(this.ball, this.hole.pin));
     this.phase = 'aim';
     // Tee shots show the whole hole; every shot after that zooms in on the shot.
-    this.shotView = this.strokes > 0;
+    this.setShotView(this.strokes > 0);
     this.renderHud();
     this.renderCard();
     this.renderClubs();
@@ -364,6 +414,37 @@ export class Game {
       this.power = this.powerAt(now);
       this.hit();
     }
+  }
+
+  /**
+   * Zoom around the pin or the reticle, whichever is closer to the ball. That point stays
+   * put on screen; if it's off screen, the zoom centers on it instead.
+   */
+  private zoom(factor: number) {
+    const { w, h } = this.renderer;
+    const t = this.camTarget;
+    const fit = fitCamera(this.hole.bounds, w, h, 0).k;
+    const k = Math.min(40, Math.max(fit * 0.6, t.k * factor));
+    const reticle = geom.add(this.ball, geom.scale(geom.dirFromHeading(this.aimCenterShown), this.shownDist));
+    const anchor = geom.dist(this.ball, this.hole.pin) <= geom.dist(this.ball, reticle) ? this.hole.pin : reticle;
+    const onScreen = Math.abs(anchor.x - t.cx) <= w / (2 * t.k) && Math.abs(anchor.y - t.cy) <= h / (2 * t.k);
+    this.camTarget = onScreen
+      ? { k, cx: anchor.x - (anchor.x - t.cx) * (t.k / k), cy: anchor.y - (anchor.y - t.cy) * (t.k / k) }
+      : { k, cx: anchor.x, cy: anchor.y };
+    this.manualCam = true;
+  }
+
+  private setDragMode(on: boolean) {
+    this.dragMode = on;
+    this.els.dragBtn.classList.toggle('active', on);
+    this.stage.classList.toggle('dragging', on);
+  }
+
+  private setGreenView(on: boolean) {
+    this.greenView = on;
+    this.els.viewBtn.classList.toggle('active', on);
+    this.els.viewBtn.innerHTML = on ? EYE : EYE_OFF;
+    this.els.legend.classList.toggle('show-topo', on);
   }
 
   private hit() {
@@ -501,9 +582,9 @@ export class Game {
   private updateCamera() {
     const hole = this.hole;
     const { w, h: hh } = this.renderer;
-    if (w < 2) return;
+    if (w < 2 || this.manualCam) return;
     if (!this.shotView) {
-      // Whole hole, with the bottom strip (labels) kept clear of the tee.
+      // Whole hole, with the bottom strip (legend and labels) kept clear of the tee.
       const first = fitCamera(hole.bounds, w, hh, 4);
       this.camTarget = fitCamera({ ...hole.bounds, minY: hole.bounds.minY - 50 / first.k }, w, hh, 4);
       return;
@@ -531,7 +612,7 @@ export class Game {
       const hx = Math.max(MIN_SPAN / 2, (b.maxX - b.minX) / 2);
       const hy = Math.max(MIN_SPAN / 2, (b.maxY - b.minY) / 2);
       const box = { minX: cx - hx, maxX: cx + hx, minY: cy - hy, maxY: cy + hy };
-      // Keep the top and bottom strips (labels) clear of what's framed.
+      // Keep the top and bottom strips (labels and legend) clear of what's framed.
       const first = fitCamera(box, w, hh, MARGIN);
       return fitCamera({ ...box, minY: box.minY - BOTTOM_RESERVE_PX / first.k, maxY: box.maxY + TOP_RESERVE_PX / first.k }, w, hh, MARGIN);
     };
@@ -562,6 +643,12 @@ export class Game {
     this.camTarget = { ...next, k: Math.min(next.k, t.k) };
   }
 
+  private setShotView(on: boolean) {
+    this.shotView = on;
+    this.manualCam = false;
+    this.updateCamera();
+  }
+
   // ---------------------------------------------------------------- input
 
   /** Clicking (or dragging) on the course points the center of the aim cone at that spot. */
@@ -571,6 +658,11 @@ export class Game {
   }
 
   private onDown = (e: PointerEvent) => {
+    if (this.dragMode) {
+      this.panFrom = { x: e.offsetX, y: e.offsetY };
+      this.canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if (this.phase !== 'aim') return;
     this.aiming = true;
     this.aimAt(e);
@@ -578,10 +670,21 @@ export class Game {
   };
 
   private onMove = (e: PointerEvent) => {
+    if (this.panFrom) {
+      // Move both the current and target camera so panning has no lag.
+      const k = this.cam.k;
+      const dx = (e.offsetX - this.panFrom.x) / k, dy = (e.offsetY - this.panFrom.y) / k;
+      this.cam.cx -= dx; this.cam.cy += dy;
+      this.camTarget = { ...this.camTarget, cx: this.camTarget.cx - dx, cy: this.camTarget.cy + dy };
+      this.panFrom = { x: e.offsetX, y: e.offsetY };
+      this.manualCam = true;
+      return;
+    }
     if (this.aiming) this.aimAt(e);
   };
 
   private onUp = () => {
+    this.panFrom = undefined;
     if (!this.aiming) return;
     this.aiming = false;
     this.updateCamera();
@@ -658,7 +761,7 @@ export class Game {
       };
       if (this.phase === 'power') powerNow = this.powerAt(now);
     }
-    this.renderer.draw(this.hole, this.course.biome, this.cam, { ball, trail, aim });
+    this.renderer.draw(this.hole, this.course.biome, this.cam, { ball, trail, aim, greenBreak: this.greenView });
 
     const shown = this.phase === 'power' ? powerNow : this.phase === 'flight' ? this.power : 0;
     const pct = (shown / MAX_POWER) * 100;

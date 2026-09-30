@@ -6,6 +6,12 @@ const app = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
 
 async function boot() {
+  if (params.has('dev')) {
+    // The dev viewer generates locally so you can scrub any date, including the future.
+    const { DevViewer } = await import('./dev.ts');
+    new DevViewer(app, params.get('date') ?? new Date().toISOString().slice(0, 10));
+    return;
+  }
   const date = params.get('date');
   try {
     const res = await fetch(date ? `/api/course/${date}` : '/api/course');

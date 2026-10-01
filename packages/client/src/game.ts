@@ -249,7 +249,12 @@ export class Game {
     swing.onclick = () => this.action();
     this.els.swing = swing;
     this.els.hint = h('div', 'hint');
-    controls.append(clubs, meter, labels, swing, this.els.hint);
+    // Meter (with its labels) and the swing button share a row on phones; stacked on wider screens.
+    const power = h('div', 'power');
+    power.append(meter, labels);
+    const powerRow = h('div', 'power-row');
+    powerRow.append(power, swing);
+    controls.append(clubs, powerRow, this.els.hint);
     r.append(controls);
 
     this.renderer = new Renderer(this.canvas.getContext('2d')!, 1, 1);

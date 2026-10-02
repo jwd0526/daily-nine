@@ -32,3 +32,17 @@ describe('simulateShot', () => {
     expect(simulateShot(fromTee, { from, heading: 0, club: pw, power: 0.9 }, noScatter).outcome).toBe('holed');
   });
 });
+
+describe('trees', () => {
+  const tree = { x: 0, y: 0, r: 4, h: 18 };
+  const underTree = { ...calm, trees: [tree] };
+  const from = { x: 0, y: 2 }; // 2 yds from the trunk, under the canopy
+
+  it('does not clip the tree the ball starts under when aimed away from it', () => {
+    expect(simulateShot(underTree, { from, heading: 0, club: club('PW'), power: 0.5 }, noScatter).hitTree).toBe(false);
+  });
+
+  it('still clips it when aimed back through the trunk', () => {
+    expect(simulateShot(underTree, { from, heading: Math.PI, club: club('PW'), power: 0.5 }, noScatter).hitTree).toBe(true);
+  });
+});

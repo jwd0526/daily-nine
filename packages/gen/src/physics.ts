@@ -84,13 +84,19 @@ export function simulateShot(hole: Hole, input: ShotInput, rand: () => number = 
   const T = 0.9 + carry / 110;
   const steps = Math.max(10, Math.round(T * 30));
   let landed = false;
+  const startTrees = new Map(hole.trees.filter((tr) => dist(from, tr) < tr.r).map((tr) => [tr, dist(from, tr)]));
   for (let i = 1; i <= steps; i++) {
     const u = i / steps;
     const p = add(add(from, scale(dir, carry * u)), scale(drift, u * u));
     const h = 4 * apex * u * (1 - u);
     t = T * u;
-    // Trees knock the ball down when it's below their canopy.
-    const tree = hole.trees.find((tr) => h < tr.h && dist(p, tr) < tr.r);
+    // Trees knock the ball down when it's below their canopy. A tree the ball starts
+    // under only counts if the shot heads in toward its trunk, not out and away.
+    const tree = hole.trees.find((tr) => {
+      if (h >= tr.h || dist(p, tr) >= tr.r) return false;
+      const startD = startTrees.get(tr);
+      return startD === undefined || dist(p, tr) < startD - 0.5;
+    });
     path.push({ x: p.x, y: p.y, h, t });
     pos = p;
     if (tree) {

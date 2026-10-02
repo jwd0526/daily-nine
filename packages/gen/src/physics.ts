@@ -40,13 +40,16 @@ export function windDrift(hole: Hole, carry: number, apex: number): Vec {
   return scale(dirFromHeading(hole.wind.dir), hole.wind.mph * k);
 }
 
+/** Overall scale on landing scatter (club `spray` values are multiplied by this). */
+const SPRAY_SCALE = 0.65;
+
 /**
  * Radius (yards) of the random landing zone for a full swing: longer clubs spray more,
  * and every club is tighter close to the pin.
  */
 export function sprayRadius(club: Club, distToPin: number): number {
   const range = Math.min(1, Math.max(0, distToPin / 300));
-  return club.spray * (0.5 + 0.65 * range);
+  return SPRAY_SCALE * club.spray * (0.5 + 0.65 * range);
 }
 
 /** Overswing error: past 100% the face opens or closes a little. */

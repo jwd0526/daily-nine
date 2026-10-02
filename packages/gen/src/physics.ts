@@ -59,9 +59,11 @@ export function overswingError(power: number, rand: () => number): number {
 }
 
 const DECEL: Record<Surface, number> = {
-  tee: 3, fairway: 3, fringe: 2, green: 0.7, rough: 8, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
+  tee: 3, fairway: 3, fringe: 2, green: 0.7, rough: 5, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
 };
 const G = 10.7; // yd/s²
+/** Exaggerates how hard slopes pull a rolling ball on the green, so the break reads clearly. */
+const BREAK = 1.6;
 /** Cup capture radius (yards): about twice a real cup, so hole-outs happen. */
 export const CUP_R = 0.36;
 const CUP_MAX_SPEED = 2.4;
@@ -141,12 +143,13 @@ function roll(hole: Hole, path: PathPoint[], start: Vec, v0: Vec, t0: number, hi
     const speed = len(vel);
     const onGreen = surf === 'green' || surf === 'fringe';
     const grad = onGreen ? greenGradient(hole, pos) : { x: 0, y: 0 };
-    const slopeAcc = scale(grad, -G);
+    const slopeAcc = scale(grad, -G * BREAK);
     const decel = DECEL[surf];
     if (decel === Infinity) break;
     if (speed < 0.05) {
       // Static friction holds the ball unless the slope is steep.
-      if (len(slopeAcc) < decel * 0.9) break;
+      // (Threshold sits above the steepest allowed grade, so balls settle rather than creep off.)
+      if (len(slopeAcc) < decel * 1.3) break;
     }
     const fric = speed > 0 ? scale(vel, -Math.min(decel, speed / DT) / speed) : { x: 0, y: 0 };
     vel = add(vel, scale(add(fric, slopeAcc), DT));

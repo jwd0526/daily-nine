@@ -32,7 +32,7 @@ export interface ShotResult {
 }
 
 /** Yards of drift per mph for a 200-yard carry at a 30-yard apex. */
-const WIND_STRENGTH = 1.0;
+const WIND_STRENGTH = 1.5;
 
 /** Wind displacement (yards) for a flight of the given carry and apex. */
 export function windDrift(hole: Hole, carry: number, apex: number): Vec {

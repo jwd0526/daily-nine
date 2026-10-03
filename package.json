@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "lint": "eslint .",
     "dev": "npm run dev -w @golf/client",
     "build": "npm run build -w @golf/client && npm run courses",
     "preview": "npm run preview -w @golf/client",
@@ -15,9 +16,13 @@
     "courses": "tsx packages/tools/src/build-courses.ts"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.0.0",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.0",
     "vite": "^5.4.0",
     "vitest": "^2.1.0"
   }

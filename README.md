@@ -10,7 +10,7 @@ npm run dev          # http://localhost:5173, courses generated on the fly
 ```
 
 - `?dev`: generation viewer, all nine holes for any date (works locally and on the hosted site). its "play" link opens that date. unpublished dates are generated in the browser.
-- `npm run typecheck`, `npm test`
+- `npm run lint`, `npm run typecheck`, `npm test`
 - `npm run batch -- 365`: generator health stats across many dates.
 
 ## hosting

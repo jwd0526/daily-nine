@@ -1,5 +1,5 @@
 import {
-  CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, lieCarryFactor, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
+  CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, lieRange, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
   geom, type Club, type Course, type Hole, type ShotResult, type Surface, type Vec,
 } from '@golf/gen';
 import { Renderer, fitCamera, type Camera } from './render.ts';
@@ -309,16 +309,24 @@ export class Game {
       `${hole.wind.mph} <small>MPH</small></div>`;
     this.els.bl.innerHTML =
       `<div class="label">${LIE_NAMES[lie]} · Shot ${this.strokes + 1}</div>` +
+      this.liePowerLabel(lie) +
       `<div class="big">${toPin} <small>YDS TO PIN</small></div>`;
   }
 
+  /** e.g. "75-85% power" for the selected club from a bad lie; empty from a clean one */
+  private liePowerLabel(lie: Surface) {
+    const [lo, hi] = lieRange(lie, this.club);
+    if (lo === 1) return '';
+    return `<div class="lie-power">${Math.round(lo * 100)}-${Math.round(hi * 100)}% power</div>`;
+  }
+
   private renderClubs() {
-    const lie = surfaceAt(this.hole, this.ball);
     for (const c of CLUBS) {
       const b = this.clubButtons.get(c.id)!;
       b.classList.toggle('selected', c.id === this.club.id);
       b.disabled = this.phase !== 'aim';
-      const yd = Math.round(c.carry * lieCarryFactor(lie, c));
+      // clean-lie carry: a bad lie's power cut is shown separately, so clubbing up is the player's call
+      const yd = c.carry;
       (b.querySelector('.yd') as HTMLElement).textContent = String(yd);
     }
   }
@@ -333,9 +341,9 @@ export class Game {
 
   // ---------------------------------------------------------------- shot flow
 
-  /** Distance a 100% swing of the current club travels from this lie. */
+  /** Distance a clean 100% swing of the current club carries (bad lies take a random cut off this). */
   private targetDistance(club = this.club) {
-    return club.carry * lieCarryFactor(surfaceAt(this.hole, this.ball), club);
+    return club.carry;
   }
 
   private startShot(autoClub: boolean) {
@@ -345,7 +353,7 @@ export class Game {
     const toPin = geom.dist(this.ball, hole.pin);
     if (autoClub) {
       if (lie === 'tee' && hole.par > 3) this.club = CLUBS[0];
-      else this.club = clubForDistance(toPin * 0.97, lieCarryFactor(lie, CLUBS[0]));
+      else this.club = clubForDistance(toPin * 0.97);
     }
     this.aimCenter = this.defaultAim();
     this.aimCenterShown = this.aimCenter;
@@ -378,6 +386,7 @@ export class Game {
   private selectClub(c: Club) {
     if (this.phase !== 'aim') return;
     this.club = c;
+    this.renderHud(); // the lie's power range depends on the club
     this.renderClubs();
     this.updateControls();
     this.updateCamera();
@@ -761,6 +770,8 @@ export class Game {
         locked: this.phase === 'power',
         spray: this.shownSpray,
         label: `${Math.round(this.shownDist)}`,
+        // where a full swing actually lands from a bad lie (random within the club's power range)
+        span: lieRange(surfaceAt(this.hole, this.ball), this.club),
         // How the wind will move a full swing, drawn off the center line.
         wind: windDrift(this.hole, this.shownDist, this.club.apex),
       };

@@ -70,6 +70,7 @@ button { font: inherit; color: inherit; }
 .hud.tl { top: 14px; left: 18px; }
 .hud.tr { top: 14px; right: 18px; text-align: right; }
 .hud.bl { bottom: 14px; left: 18px; }
+.hud .lie-power { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-top: 3px; }
 .chips { display: flex; gap: 6px; margin-top: 8px; }
 .chip { font-size: 10px; font-weight: 600; letter-spacing: 0.18em; padding: 3px 8px; border: 1px solid rgba(226, 201, 126, 0.5); color: var(--gold); border-radius: 999px; background: var(--glass); text-shadow: none; }
 .wind { display: inline-flex; align-items: center; gap: 6px; }

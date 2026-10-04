@@ -1,5 +1,5 @@
 import type { Biome, Hole, Poly, Vec, PathPoint, SceneryKind } from '@golf/gen';
-import { frameAt, fairwaySegments, fairwayWidthAt, greenGradient, greenHeight, TEE_BOX, PUTT_RINGS, MAX_PUTTS, GREEN_APRON, geom } from '@golf/gen';
+import { frameAt, fairwaySegments, fairwayWidthAt, greenGradient, greenHeight, terrainGradient, terrainHeight, TEE_BOX, PUTT_RINGS, MAX_PUTTS, GREEN_APRON, geom } from '@golf/gen';
 
 interface Palette {
   bg: string; rough: string; fairway: string; stripe: string; fringe: string; green: string;
@@ -44,7 +44,7 @@ export interface Camera { cx: number; cy: number; k: number }
 export interface Overlay {
   ball?: Vec & { h?: number };
   trail?: PathPoint[];
-  aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string };
+  aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string; span?: [number, number] };
   debug?: boolean;
   /** Show the green's break: height shading and downhill arrows. */
   greenBreak?: boolean;
@@ -96,6 +96,79 @@ function breakImage(hole: Hole): HTMLCanvasElement {
   octx.putImageData(img, 0, 0);
   breakCache.set(hole, off);
   return off;
+}
+
+interface ContourImages {
+  b: { minX: number; minY: number; maxX: number; maxY: number };
+  cell: number;
+  /** soft light/dark hillshade, always drawn */
+  shade: HTMLCanvasElement;
+  /** blue (low) to white (high) height map for the eye overlay; transparent where flat */
+  map: HTMLCanvasElement;
+}
+const CONTOUR_CELL = 1.5;
+const contourCache = new WeakMap<Hole, ContourImages | null>();
+
+/** fairway contour images over the area the contours cover (one pixel per cell), cached per hole */
+function contourImages(hole: Hole): ContourImages | null {
+  if (contourCache.has(hole)) return contourCache.get(hole)!;
+  if (!hole.contours.length) {
+    contourCache.set(hole, null);
+    return null;
+  }
+  const reach = (b: Hole['contours'][number]) => 2.5 * b.r * Math.max(1, b.sx ?? 1);
+  const b = {
+    minX: Math.min(...hole.contours.map((q) => q.x - reach(q))),
+    maxX: Math.max(...hole.contours.map((q) => q.x + reach(q))),
+    minY: Math.min(...hole.contours.map((q) => q.y - reach(q))),
+    maxY: Math.max(...hole.contours.map((q) => q.y + reach(q))),
+  };
+  const cell = CONTOUR_CELL;
+  const cols = Math.ceil((b.maxX - b.minX) / cell) + 1;
+  const rows = Math.ceil((b.maxY - b.minY) / cell) + 1;
+  const hs = new Float32Array(cols * rows);
+  let maxAbs = 0;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      // Row 0 is the top of the screen (highest y).
+      const h = terrainHeight(hole, { x: b.minX + i * cell, y: b.maxY - j * cell });
+      hs[j * cols + i] = h;
+      maxAbs = Math.max(maxAbs, Math.abs(h));
+    }
+  }
+  const canvas = () => {
+    const cv = document.createElement('canvas');
+    cv.width = cols;
+    cv.height = rows;
+    return cv;
+  };
+  const shade = canvas(), map = canvas();
+  const sctx = shade.getContext('2d')!, mctx = map.getContext('2d')!;
+  const simg = sctx.createImageData(cols, rows), mimg = mctx.createImageData(cols, rows);
+  const at = (i: number, j: number) => hs[Math.min(rows - 1, Math.max(0, j)) * cols + Math.min(cols - 1, Math.max(0, i))];
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const n = (j * cols + i) * 4;
+      // slope in image space (x right, y down); light comes from the top-left
+      const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * cell);
+      const gy = (at(i, j + 1) - at(i, j - 1)) / (2 * cell);
+      const lit = (gx - gy) * 0.707; // > 0 when the ground faces the light
+      const a = Math.min(0.32, Math.abs(lit) * 9);
+      simg.data[n] = simg.data[n + 1] = simg.data[n + 2] = lit > 0 ? 255 : 0;
+      simg.data[n + 3] = Math.round(a * 255);
+      const h = at(i, j);
+      const t = maxAbs ? (h / maxAbs + 1) / 2 : 0.5; // 0 lowest .. 1 highest, flat ground in the middle
+      mimg.data[n] = Math.round(LOW[0] + (255 - LOW[0]) * t);
+      mimg.data[n + 1] = Math.round(LOW[1] + (255 - LOW[1]) * t);
+      mimg.data[n + 2] = Math.round(LOW[2] + (255 - LOW[2]) * t);
+      mimg.data[n + 3] = Math.round(Math.min(1, (Math.abs(h) / (maxAbs || 1)) * 1.6) * 190);
+    }
+  }
+  sctx.putImageData(simg, 0, 0);
+  mctx.putImageData(mimg, 0, 0);
+  const out = { b, cell, shade, map };
+  contourCache.set(hole, out);
+  return out;
 }
 
 /** How far (yards) the course fades out beyond the out-of-bounds line. */
@@ -304,6 +377,18 @@ export class Renderer {
       c.restore();
     }
 
+    // Fairway contours: soft hillshade so slopes read at a glance (eye overlay adds the full map).
+    const contours = contourImages(hole);
+    if (contours) {
+      c.save();
+      c.beginPath();
+      this.playArea(hole, 0);
+      c.clip('nonzero');
+      c.imageSmoothingEnabled = true;
+      c.drawImage(contours.shade, this.sx({ x: contours.b.minX, y: 0 }), this.sy({ x: 0, y: contours.b.maxY }), (contours.shade.width - 1) * contours.cell * k, (contours.shade.height - 1) * contours.cell * k);
+      c.restore();
+    }
+
     // Water (with island cut-outs).
     for (const w of hole.water) {
       c.beginPath();
@@ -376,7 +461,10 @@ export class Renderer {
     c.fill();
     c.restore();
 
-    if (o.greenBreak) this.drawBreak(hole);
+    if (o.greenBreak) {
+      this.drawContourBreak(hole);
+      this.drawBreak(hole);
+    }
     this.drawPuttRings(hole);
 
     // Tee box.
@@ -502,7 +590,17 @@ export class Renderer {
     c.imageSmoothingEnabled = true;
     c.drawImage(off, this.sx({ x: b.minX, y: 0 }), this.sy({ x: 0, y: b.maxY }), (cols - 1) * cell * k, (rows - 1) * cell * k);
 
-    // Downhill arrows; longer means steeper.
+    this.drawArrows(b, (p) => (geom.pointInPoly(p, hole.green.poly) ? greenGradient(hole, p) : null), 0.035);
+    c.restore();
+  }
+
+  /**
+   * Downhill arrows on a grid over `b`; longer means steeper (full length at `steep`).
+   * `gradientAt` returns null where no arrow belongs.
+   */
+  private drawArrows(b: { minX: number; minY: number; maxX: number; maxY: number }, gradientAt: (p: Vec) => Vec | null, steep: number) {
+    const c = this.ctx;
+    const k = this.cam.k;
     const step = Math.max(1.5, 26 / k);
     c.strokeStyle = 'rgba(35,70,45,0.6)';
     c.fillStyle = 'rgba(35,70,45,0.6)';
@@ -510,11 +608,11 @@ export class Renderer {
     for (let x = b.minX + step / 2; x <= b.maxX; x += step) {
       for (let y = b.minY + step / 2; y <= b.maxY; y += step) {
         const p = { x, y };
-        if (!geom.pointInPoly(p, hole.green.poly)) continue;
-        const g = greenGradient(hole, p);
+        const g = gradientAt(p);
+        if (!g) continue;
         const m = Math.hypot(g.x, g.y);
-        if (m < 0.002) continue;
-        const l = (0.3 + 0.7 * Math.min(1, m / 0.035)) * step * 0.75 * k;
+        if (m < steep * 0.15) continue;
+        const l = (0.3 + 0.7 * Math.min(1, m / steep)) * step * 0.75 * k;
         // Screen y is flipped, so downhill (-g) is (-g.x, +g.y) on screen.
         const ux = -g.x / m, uy = g.y / m;
         const x0 = this.sx(p) - (ux * l) / 2, y0 = this.sy(p) - (uy * l) / 2;
@@ -532,6 +630,21 @@ export class Renderer {
         c.fill();
       }
     }
+  }
+
+  /** eye overlay for fairway contours: blue (low) to white (high) map plus downhill arrows, off the green */
+  private drawContourBreak(hole: Hole) {
+    const img = contourImages(hole);
+    if (!img) return;
+    const c = this.ctx;
+    const k = this.cam.k;
+    c.save();
+    c.beginPath();
+    this.playArea(hole, 0);
+    c.clip('nonzero');
+    c.imageSmoothingEnabled = true;
+    c.drawImage(img.map, this.sx({ x: img.b.minX, y: 0 }), this.sy({ x: 0, y: img.b.maxY }), (img.map.width - 1) * img.cell * k, (img.map.height - 1) * img.cell * k);
+    this.drawArrows(img.b, (p) => (geom.pointInPoly(p, hole.green.poly) ? null : terrainGradient(hole, p)), 0.12);
     c.restore();
   }
 
@@ -583,6 +696,7 @@ export class Renderer {
     c.moveTo(this.sx(a.from), this.sy(a.from));
     c.lineTo(this.sx(end), this.sy(end));
     c.stroke();
+    if (a.span && a.span[0] < 1) this.drawLieSpan(a.from, dir, a.dist, a.span);
     // Reticle: a dashed ring marking where a full swing can randomly land, a center dot,
     // and four short ticks that cross the ring at each quarter.
     const x = this.sx(end), y = this.sy(end);
@@ -657,6 +771,35 @@ export class Renderer {
       c.arc(p.x, p.y, 0.8 + 1.1 * u, 0, Math.PI * 2);
       c.fill();
     }
+    c.restore();
+  }
+
+  /** bracket on the aim line from a bad lie: the stretch a full swing can actually land in */
+  private drawLieSpan(from: Vec, dir: Vec, dist: number, [lo, hi]: [number, number]) {
+    const c = this.ctx;
+    const at = (f: number) => {
+      const p = { x: from.x + dir.x * dist * f, y: from.y + dir.y * dist * f };
+      return { x: this.sx(p), y: this.sy(p) };
+    };
+    const a = at(lo), b = at(hi);
+    // screen-space perpendicular (screen y is flipped)
+    const nx = dir.y, ny = dir.x;
+    c.save();
+    c.lineCap = 'butt';
+    c.strokeStyle = 'rgba(226,201,126,0.45)';
+    c.lineWidth = 7;
+    c.beginPath();
+    c.moveTo(a.x, a.y);
+    c.lineTo(b.x, b.y);
+    c.stroke();
+    c.strokeStyle = 'rgba(226,201,126,0.95)';
+    c.lineWidth = 2;
+    c.beginPath();
+    for (const p of [a, b]) {
+      c.moveTo(p.x - nx * 7, p.y - ny * 7);
+      c.lineTo(p.x + nx * 7, p.y + ny * 7);
+    }
+    c.stroke();
     c.restore();
   }
 

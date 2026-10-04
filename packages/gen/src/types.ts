@@ -21,6 +21,9 @@ export interface Wind {
 
 export interface Tree { x: number; y: number; r: number; h: number }
 
+/** gaussian mound (h > 0) or hollow (h < 0): height h (yards) at center, falloff radius r; sx > 1 stretches it along heading `rot` */
+export interface Bump { x: number; y: number; r: number; h: number; sx?: number; rot?: number }
+
 export interface GreenSlope {
   /** Linear gradient of height (rise per yard). */
   gx: number;
@@ -29,7 +32,7 @@ export interface GreenSlope {
    * Gaussian mounds (h > 0) and hollows (h < 0): height h (yards) at center, falloff radius r.
    * sx > 1 stretches it along heading `rot` into a ridge or swale.
    */
-  bumps: { x: number; y: number; r: number; h: number; sx?: number; rot?: number }[];
+  bumps: Bump[];
   /** Tiers: a smooth step of height h across a line through (x, y), rising toward heading `dir`, over width w. */
   tiers?: { x: number; y: number; dir: number; h: number; w: number }[];
   /** Gentle undulation: a·sin(kx·x + ky·y + ph). */
@@ -76,6 +79,8 @@ export interface Hole {
   archetype?: string;
   green: { poly: Poly; center: Vec; slope: GreenSlope };
   fringeWidth: number;
+  /** fairway and rough contours (mounds, swales, cambers) that move a rolling ball. none on the green. */
+  contours: Bump[];
   bunkers: Poly[];
   /** Sandy scrub areas: play like a fairway bunker you can advance from. */
   waste?: Poly[];

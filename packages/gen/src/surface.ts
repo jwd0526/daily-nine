@@ -1,7 +1,7 @@
 // Single source of truth for "what is the ground at point p?".
 // Physics, the validator bot and the renderer all go through here.
 
-import type { Hole, Surface, Vec, Centerline, GreenSlope } from './types.ts';
+import type { Bump, Hole, Surface, Vec, Centerline, GreenSlope } from './types.ts';
 import { fairwayWidthAt } from './centerline.ts';
 import { dist, distToPolyEdge, lerp, pointInPoly, pointInRegion, segDist, dirFromHeading, dot, sub, perp } from './geom.ts';
 
@@ -92,7 +92,17 @@ export function greenHeight(hole: Hole, p: Vec): number {
 /** Height of a green surface described by `slope`, relative to its center `c`. */
 export function slopeHeight(slope: GreenSlope, c: Vec, p: Vec): number {
   const { gx, gy, bumps, tiers = [], waves = [] } = slope;
-  let h = gx * (p.x - c.x) + gy * (p.y - c.y);
+  let h = gx * (p.x - c.x) + gy * (p.y - c.y) + bumpsHeight(bumps, p);
+  for (const t of tiers) {
+    const n = (p.x - t.x) * Math.sin(t.dir) + (p.y - t.y) * Math.cos(t.dir);
+    h += t.h * 0.5 * (1 + Math.tanh(n / t.w));
+  }
+  for (const w of waves) h += w.a * Math.sin(w.kx * p.x + w.ky * p.y + w.ph);
+  return h;
+}
+
+function bumpsHeight(bumps: Bump[], p: Vec): number {
+  let h = 0;
   for (const b of bumps) {
     const dx = p.x - b.x, dy = p.y - b.y;
     const rot = b.rot ?? 0;
@@ -102,19 +112,36 @@ export function slopeHeight(slope: GreenSlope, c: Vec, p: Vec): number {
     const d2 = (along / (b.r * (b.sx ?? 1))) ** 2 + (across / b.r) ** 2;
     h += b.h * Math.exp(-d2);
   }
-  for (const t of tiers) {
-    const n = (p.x - t.x) * Math.sin(t.dir) + (p.y - t.y) * Math.cos(t.dir);
-    h += t.h * 0.5 * (1 + Math.tanh(n / t.w));
-  }
-  for (const w of waves) h += w.a * Math.sin(w.kx * p.x + w.ky * p.y + w.ph);
   return h;
+}
+
+/** central-difference gradient (rise per yard) of a height function */
+function gradientOf(height: (p: Vec) => number, p: Vec): Vec {
+  const e = 0.25;
+  return {
+    x: (height({ x: p.x + e, y: p.y }) - height({ x: p.x - e, y: p.y })) / (2 * e),
+    y: (height({ x: p.x, y: p.y + e }) - height({ x: p.x, y: p.y - e })) / (2 * e),
+  };
 }
 
 /** Gradient of the green height (rise per yard). */
 export function greenGradient(hole: Hole, p: Vec): Vec {
-  const e = 0.25;
-  return {
-    x: (greenHeight(hole, { x: p.x + e, y: p.y }) - greenHeight(hole, { x: p.x - e, y: p.y })) / (2 * e),
-    y: (greenHeight(hole, { x: p.x, y: p.y + e }) - greenHeight(hole, { x: p.x, y: p.y - e })) / (2 * e),
-  };
+  return gradientOf((q) => greenHeight(hole, q), p);
+}
+
+/** yards beyond the green's edge over which fairway contours fade in, so they never fight the green's own slope */
+const CONTOUR_FADE = 8;
+
+/** height of the ground off the green from fairway contours (0 on the green itself) */
+export function terrainHeight(hole: Hole, p: Vec): number {
+  // most of the hole is nowhere near a contour: skip the green-edge math there
+  const near = hole.contours.some((b) => Math.abs(p.x - b.x) + Math.abs(p.y - b.y) < 4 * b.r * Math.max(1, b.sx ?? 1));
+  if (!near || pointInPoly(p, hole.green.poly)) return 0;
+  const fade = Math.min(1, Math.max(0, (distToPolyEdge(p, hole.green.poly) - 1) / CONTOUR_FADE));
+  return fade === 0 ? 0 : bumpsHeight(hole.contours, p) * fade;
+}
+
+/** Gradient of the contour terrain (rise per yard). */
+export function terrainGradient(hole: Hole, p: Vec): Vec {
+  return gradientOf((q) => terrainHeight(hole, q), p);
 }

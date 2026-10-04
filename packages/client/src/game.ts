@@ -1,5 +1,5 @@
 import {
-  CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
+  CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, lieRange, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
   geom, type Club, type Course, type Hole, type ShotResult, type Surface, type Vec,
 } from '@golf/gen';
 import { Renderer, fitCamera, type Camera } from './render.ts';
@@ -309,7 +309,15 @@ export class Game {
       `${hole.wind.mph} <small>MPH</small></div>`;
     this.els.bl.innerHTML =
       `<div class="label">${LIE_NAMES[lie]} · Shot ${this.strokes + 1}</div>` +
+      this.liePowerLabel(lie) +
       `<div class="big">${toPin} <small>YDS TO PIN</small></div>`;
+  }
+
+  /** e.g. "75-85% power" for the selected club from a bad lie; empty from a clean one */
+  private liePowerLabel(lie: Surface) {
+    const [lo, hi] = lieRange(lie, this.club);
+    if (lo === 1) return '';
+    return `<div class="lie-power">${Math.round(lo * 100)}-${Math.round(hi * 100)}% power</div>`;
   }
 
   private renderClubs() {
@@ -378,6 +386,7 @@ export class Game {
   private selectClub(c: Club) {
     if (this.phase !== 'aim') return;
     this.club = c;
+    this.renderHud(); // the lie's power range depends on the club
     this.renderClubs();
     this.updateControls();
     this.updateCamera();
@@ -761,6 +770,8 @@ export class Game {
         locked: this.phase === 'power',
         spray: this.shownSpray,
         label: `${Math.round(this.shownDist)}`,
+        // where a full swing actually lands from a bad lie (random within the club's power range)
+        span: lieRange(surfaceAt(this.hole, this.ball), this.club),
         // How the wind will move a full swing, drawn off the center line.
         wind: windDrift(this.hole, this.shownDist, this.club.apex),
       };

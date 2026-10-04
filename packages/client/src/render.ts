@@ -44,7 +44,7 @@ export interface Camera { cx: number; cy: number; k: number }
 export interface Overlay {
   ball?: Vec & { h?: number };
   trail?: PathPoint[];
-  aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string };
+  aim?: { from: Vec; heading: number; dist: number; cone?: { center: number; half: number }; locked?: boolean; spray?: number; wind?: Vec; label?: string; span?: [number, number] };
   debug?: boolean;
   /** Show the green's break: height shading and downhill arrows. */
   greenBreak?: boolean;
@@ -583,6 +583,7 @@ export class Renderer {
     c.moveTo(this.sx(a.from), this.sy(a.from));
     c.lineTo(this.sx(end), this.sy(end));
     c.stroke();
+    if (a.span && a.span[0] < 1) this.drawLieSpan(a.from, dir, a.dist, a.span);
     // Reticle: a dashed ring marking where a full swing can randomly land, a center dot,
     // and four short ticks that cross the ring at each quarter.
     const x = this.sx(end), y = this.sy(end);
@@ -657,6 +658,35 @@ export class Renderer {
       c.arc(p.x, p.y, 0.8 + 1.1 * u, 0, Math.PI * 2);
       c.fill();
     }
+    c.restore();
+  }
+
+  /** bracket on the aim line from a bad lie: the stretch a full swing can actually land in */
+  private drawLieSpan(from: Vec, dir: Vec, dist: number, [lo, hi]: [number, number]) {
+    const c = this.ctx;
+    const at = (f: number) => {
+      const p = { x: from.x + dir.x * dist * f, y: from.y + dir.y * dist * f };
+      return { x: this.sx(p), y: this.sy(p) };
+    };
+    const a = at(lo), b = at(hi);
+    // screen-space perpendicular (screen y is flipped)
+    const nx = dir.y, ny = dir.x;
+    c.save();
+    c.lineCap = 'butt';
+    c.strokeStyle = 'rgba(226,201,126,0.45)';
+    c.lineWidth = 7;
+    c.beginPath();
+    c.moveTo(a.x, a.y);
+    c.lineTo(b.x, b.y);
+    c.stroke();
+    c.strokeStyle = 'rgba(226,201,126,0.95)';
+    c.lineWidth = 2;
+    c.beginPath();
+    for (const p of [a, b]) {
+      c.moveTo(p.x - nx * 7, p.y - ny * 7);
+      c.lineTo(p.x + nx * 7, p.y + ny * 7);
+    }
+    c.stroke();
     c.restore();
   }
 

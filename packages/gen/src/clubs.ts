@@ -32,8 +32,6 @@ export const CLUBS: Club[] = [
   { id: '60°', name: '60° Wedge', carry: 94, apex: 29, roll: 0.015, spray: 3, cone: 6, sweep: 2.188 },
 ];
 
-/** Lofted wedges that splash out of sand cleanly. */
-const SAND_CLUBS = new Set(['52°', '56°', '60°']);
 
 export const FULL_CLUBS = CLUBS;
 export const clubById = (id: string) => CLUBS.find((c) => c.id === id) ?? CLUBS[0];
@@ -44,15 +42,36 @@ export function aimConeHalf(club: Club, distToPin: number): number {
   return (club.cone * (1 + 0.8 * closeness) * Math.PI) / 180;
 }
 
-/** Carry multiplier for hitting from a given lie. */
-export function lieCarryFactor(surface: string, club: Club): number {
-  switch (surface) {
-    case 'rough': return 0.88;
-    case 'trees': return 0.65;
-    case 'waste': return 0.85;
-    case 'bunker': return SAND_CLUBS.has(club.id) ? 0.92 : 0.75;
-    default: return 1;
-  }
+type ClubGroup = 'driver' | 'wood' | 'long' | 'mid' | 'wedge' | 'sand';
+
+function clubGroup(club: Club): ClubGroup {
+  if (club.id === 'DR') return 'driver';
+  if (club.id.endsWith('W') && club.id !== 'PW' && club.id !== 'GW') return 'wood';
+  if (club.id === '4i' || club.id === '5i') return 'long';
+  if (club.id.endsWith('i')) return 'mid';
+  if (club.id.endsWith('°')) return 'sand';
+  return 'wedge';
+}
+
+type Range = [number, number];
+/** power fraction a swing actually gets from a bad lie, drawn at random within the range each shot */
+const LIE_RANGES: Record<'rough' | 'bunker' | 'waste' | 'trees', Record<ClubGroup, Range>> = {
+  rough: { driver: [0.55, 0.65], wood: [0.6, 0.72], long: [0.72, 0.82], mid: [0.75, 0.85], wedge: [0.8, 0.88], sand: [0.82, 0.9] },
+  bunker: { driver: [0.25, 0.35], wood: [0.3, 0.45], long: [0.5, 0.65], mid: [0.62, 0.75], wedge: [0.66, 0.78], sand: [0.8, 0.9] },
+  waste: { driver: [0.65, 0.75], wood: [0.7, 0.8], long: [0.78, 0.86], mid: [0.8, 0.88], wedge: [0.84, 0.92], sand: [0.84, 0.92] },
+  trees: { driver: [0.5, 0.65], wood: [0.5, 0.65], long: [0.5, 0.65], mid: [0.5, 0.65], wedge: [0.5, 0.65], sand: [0.5, 0.65] },
+};
+
+/** power range [lo, hi] for a swing from this lie: [1, 1] from clean lies */
+export function lieRange(surface: string, club: Club): Range {
+  const table = LIE_RANGES[surface as keyof typeof LIE_RANGES];
+  return table ? table[clubGroup(club)] : [1, 1];
+}
+
+/** expected power fraction from a lie (the middle of its range), for planning */
+export function lieMid(surface: string, club: Club): number {
+  const [lo, hi] = lieRange(surface, club);
+  return (lo + hi) / 2;
 }
 
 /** Club with full carry closest to (but ideally not past) a desired distance. */

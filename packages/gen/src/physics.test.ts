@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CLUBS } from './clubs.ts';
 import { generateCourse } from './course.ts';
+import { lieRange } from './clubs.ts';
+import { surfaceAt } from './surface.ts';
 import { powerForTotal, puttsFor, ROLL_SCALE, rollFraction, simulateShot } from './physics.ts';
 
 const club = (id: string) => CLUBS.find((c) => c.id === id)!;
@@ -30,6 +32,29 @@ describe('simulateShot', () => {
     // from a tee box so the lie doesn't shorten the carry
     const fromTee = { ...calm, tee: from, teeHeading: 0 };
     expect(simulateShot(fromTee, { from, heading: 0, club: pw, power: 0.9 }, noScatter).outcome).toBe('holed');
+  });
+});
+
+describe('lie power range', () => {
+  // a rough spot on the hole, found by stepping out sideways from the landing zone
+  const lz = hole.skeleton[1];
+  const rough = [8, 12, 16, 20, 24, 28, -8, -12, -16, -20, -24, -28]
+    .map((dx) => ({ x: lz.x + dx, y: lz.y }))
+    .find((p) => surfaceAt(hole, p) === 'rough')!;
+  const iron = club('8i');
+  const carryWith = (r: number) => {
+    const shot = simulateShot(calm, { from: rough, heading: 0, club: iron, power: 1 }, () => r);
+    return shot.landing.y - rough.y;
+  };
+
+  it('finds a rough lie to test from', () => {
+    expect(rough).toBeDefined();
+  });
+
+  it('carries the low end of the range on the worst draw and the high end on the best', () => {
+    const [lo, hi] = lieRange('rough', iron);
+    expect(carryWith(0)).toBeCloseTo(iron.carry * lo, 0);
+    expect(carryWith(0.999999)).toBeCloseTo(iron.carry * hi, 0);
   });
 });
 

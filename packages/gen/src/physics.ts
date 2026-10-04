@@ -3,7 +3,7 @@
 
 import type { Hole, Surface, Vec } from './types.ts';
 import type { Club } from './clubs.ts';
-import { lieCarryFactor } from './clubs.ts';
+import { lieRange } from './clubs.ts';
 import { add, dirFromHeading, dist, len, scale, segDist, sub } from './geom.ts';
 import { greenGradient, surfaceAt } from './surface.ts';
 
@@ -109,7 +109,10 @@ export function simulateShot(hole: Hole, input: ShotInput, rand: () => number = 
   let pos = from;
   let hitTree = false;
 
-  const carry = club.carry * power * lieCarryFactor(lie, club);
+  // bad lies cost a random slice of power, within the club's range for that lie
+  const [lo, hi] = lieRange(lie, club);
+  const lieFactor = lo === hi ? lo : lo + (hi - lo) * rand();
+  const carry = club.carry * power * lieFactor;
   const apex = club.apex * Math.sqrt(power);
   // Wind plus random scatter inside the reticle (center-weighted; softer swings spray less).
   const sprayR = sprayRadius(club, dist(from, hole.pin)) * Math.min(1, power) * rand();

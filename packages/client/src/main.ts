@@ -5,21 +5,6 @@ import { Game } from './game.ts';
 const app = document.getElementById('app')!;
 const params = new URLSearchParams(location.search);
 
-/**
- * Tiempos Headline is licensed (Klim): drop the files into public/assets/fonts/tiempos/ to use it,
- * otherwise the CSS stack falls back to Source Serif 4. Loaded from JS so the URL is relative to
- * the page and works when the site is served from a subpath (e.g. GitHub Pages).
- */
-function loadHeadlineFont() {
-  const base = new URL('assets/fonts/tiempos/TiemposHeadline-Regular', document.baseURI).href;
-  const face = new FontFace('Tiempos Headline', `url(${base}.woff2) format("woff2"), url(${base}.ttf) format("truetype")`);
-  face.load().then(
-    (f) => (document.fonts as unknown as Set<FontFace>).add(f),
-    () => { /* not installed: use the fallback serif */ },
-  );
-}
-loadHeadlineFont();
-
 const utcDate = (offsetDays = 0) => {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offsetDays);

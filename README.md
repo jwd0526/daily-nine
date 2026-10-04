@@ -31,10 +31,6 @@ github pauses scheduled workflows after 60 days with no repo activity. re-enable
 
 work on a branch named `<type>/<short-description>` (e.g. `fix/tree-clip`) and open a pull request into `main`.
 
-## fonts
-
-headlines use tiempos headline if licensed copies are placed in `packages/client/public/assets/fonts/tiempos/`. otherwise they fall back to source serif 4.
-
 ## layout
 
 - `packages/gen`: deterministic course generator, physics, validator bot (shared).

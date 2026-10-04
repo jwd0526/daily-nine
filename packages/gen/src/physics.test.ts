@@ -12,10 +12,11 @@ const noScatter = () => 0;
 
 describe('puttsFor', () => {
   it.each([
-    [2, 1],
-    [6, 2],
-    [12, 3],
-  ])('%i yds from the pin takes %i putts', (d, want) => {
+    [1.5, 1],
+    [2.5, 2],
+    [11, 2],
+    [13, 3],
+  ])('%s yds from the pin takes %i putts', (d, want) => {
     expect(puttsFor(hole, { x: hole.pin.x + d, y: hole.pin.y })).toBe(want);
   });
 });

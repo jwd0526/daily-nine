@@ -212,8 +212,8 @@ function roll(hole: Hole, path: PathPoint[], start: Vec, v0: Vec, t0: number, hi
  * adding strokes by which ring around the pin it stopped in.
  */
 export const PUTT_RINGS = [
-  { r: 4, putts: 1 },
-  { r: 10, putts: 2 },
+  { r: 2, putts: 1 },
+  { r: 12, putts: 2 },
 ] as const;
 export const MAX_PUTTS = 3;
 

@@ -26,10 +26,6 @@ the site is fully static. courses are deterministic, so they're pre-generated as
 
 github pauses scheduled workflows after 60 days with no repo activity. re-enable it in the actions tab if that happens.
 
-## fonts
-
-headlines use tiempos headline if licensed copies are placed in `packages/client/public/assets/fonts/tiempos/`. otherwise they fall back to source serif 4.
-
 ## layout
 
 - `packages/gen`: deterministic course generator, physics, validator bot (shared).

@@ -7,7 +7,7 @@ import { validateHole } from './validate.ts';
 import { clamp, distToPolyEdge } from './geom.ts';
 
 /** Bump whenever generation changes in a way that alters output for a given date. */
-export const GEN_VERSION = 'v2';
+export const GEN_VERSION = 'v3';
 export const MAX_ATTEMPTS = 20;
 
 const BIOMES: [Biome, number][] = [['parkland', 3], ['links', 2.5], ['heath', 2], ['alpine', 1.5], ['desert', 1.2]];
@@ -140,6 +140,7 @@ function fallbackHole(ctx: HoleContext, rngs: RngFactory): Hole {
   draft.bunkers = draft.bunkers.filter((b) => b.every((p) => distToPolyEdge(p, draft.green.poly) < 15));
   draft.water = [];
   draft.waste = [];
+  draft.contours = [];
   draft.fairwayGaps = undefined;
   draft.dropZone = undefined;
   draft.features = draft.features.filter((f) => f === 'greenside-bunkers');

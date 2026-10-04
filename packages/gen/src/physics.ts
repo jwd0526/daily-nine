@@ -5,7 +5,7 @@ import type { Hole, Surface, Vec } from './types.ts';
 import type { Club } from './clubs.ts';
 import { lieRange } from './clubs.ts';
 import { add, dirFromHeading, dist, len, scale, segDist, sub } from './geom.ts';
-import { greenGradient, surfaceAt } from './surface.ts';
+import { greenGradient, surfaceAt, terrainGradient } from './surface.ts';
 
 export interface ShotInput {
   from: Vec;
@@ -174,9 +174,10 @@ function roll(hole: Hole, path: PathPoint[], start: Vec, v0: Vec, t0: number, hi
   let surf = surfaceAt(hole, pos);
   for (let step = 0; step < 60 * 40; step++) {
     const speed = len(vel);
-    const onGreen = surf === 'green' || surf === 'fringe';
-    const grad = onGreen ? greenGradient(hole, pos) : { x: 0, y: 0 };
-    const slopeAcc = scale(grad, -G * BREAK);
+    // greens break hard (BREAK); off the green, fairway contours pull with plain gravity
+    const slopeAcc = surf === 'green' || surf === 'fringe'
+      ? scale(add(greenGradient(hole, pos), terrainGradient(hole, pos)), -G * BREAK)
+      : scale(terrainGradient(hole, pos), -G);
     const decel = DECEL[surf];
     if (decel === Infinity) break;
     if (speed < 0.05) {

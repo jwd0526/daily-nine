@@ -13,6 +13,7 @@ import { arcLengths, fairwayPoint, frameAt, totalLength } from './centerline.ts'
 import { applyFeatures, type CourseBudget } from './features.ts';
 import { slopeHeight } from './surface.ts';
 import { placeTrees } from './trees.ts';
+import { placeContours } from './contours.ts';
 import { placeScenery } from './scenery.ts';
 
 export type Archetype =
@@ -379,6 +380,7 @@ export function buildHole(ctx: HoleContext, rngs: RngFactory, attempt: number): 
     fairwayEnd: 0,
     green: { poly: [], center: { x: 0, y: 0 }, slope: { gx: 0, gy: 0, bumps: [] } },
     fringeWidth: 2.5,
+    contours: [],
     bunkers: [],
     water: [],
     trees: [],
@@ -417,6 +419,7 @@ export function buildHole(ctx: HoleContext, rngs: RngFactory, attempt: number): 
   }
 
   applyFeatures(draft, ctx, rngs(`${key}:features`));
+  placeContours(draft, rngs(`${key}:contours`));
   placeTrees(draft, ctx.biome, ctx.style, rngs(`${key}:trees`));
   placeScenery(draft, ctx.biome, rngs(`${key}:scenery`));
 

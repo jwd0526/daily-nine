@@ -1,5 +1,5 @@
 import {
-  CLUBS, aimConeHalf, clubForDistance, sprayRadius, windDrift, lieCarryFactor, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
+  CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, lieCarryFactor, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
   geom, type Club, type Course, type Hole, type ShotResult, type Surface, type Vec,
 } from '@golf/gen';
 import { Renderer, fitCamera, type Camera } from './render.ts';
@@ -403,8 +403,8 @@ export class Game {
 
   /** The meter fraction that sends the ball to the pin. */
   private pinFraction() {
-    const d = geom.dist(this.ball, this.hole.pin);
-    return d / (this.targetDistance() * (1 + this.club.roll * 0.6));
+    // Accounts for roll out, which grows as the swing gets softer.
+    return powerForTotal(this.club, this.targetDistance(), geom.dist(this.ball, this.hole.pin));
   }
 
   private action() {

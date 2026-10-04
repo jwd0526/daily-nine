@@ -40,6 +40,27 @@ export function windDrift(hole: Hole, carry: number, apex: number): Vec {
   return scale(dirFromHeading(hole.wind.dir), hole.wind.mph * k);
 }
 
+/** Extra roll (as a fraction of carry) a soft swing gets over a full one: softer swings release. */
+const RELEASE = 0.25;
+
+/**
+ * How far the ball rolls out, as a fraction of its carry. Full swings carry spin and check up
+ * (just the club's own roll); softer swings come in lower and release, so chips run out.
+ */
+export function rollFraction(club: Club, power: number): number {
+  return club.roll + RELEASE * Math.max(0, 1 - Math.min(1, power));
+}
+
+/**
+ * Power whose carry plus roll covers `total` yards, given a full-swing carry `fullCarry`.
+ * Assumes a clean landing (fairway or green roll out about carry × rollFraction).
+ */
+export function powerForTotal(club: Club, fullCarry: number, total: number): number {
+  let p = Math.min(1.1, total / fullCarry);
+  for (let i = 0; i < 6; i++) p = Math.min(1.1, total / (fullCarry * (1 + rollFraction(club, p))));
+  return p;
+}
+
 /** Overall scale on landing scatter (club `spray` values are multiplied by this). */
 const SPRAY_SCALE = 0.65;
 
@@ -122,7 +143,7 @@ export function simulateShot(hole: Hole, input: ShotInput, rand: () => number = 
   // Roll: speed after landing depends on club and where it lands.
   const travel = sub(landing, from);
   const rollDir = scale(travel, 1 / (len(travel) || 1));
-  let v0 = Math.sqrt(2 * DECEL.fairway * carry * club.roll);
+  let v0 = Math.sqrt(2 * DECEL.fairway * carry * rollFraction(club, power));
   if (hitTree) v0 *= 0.15;
   else if (surf === 'green') v0 *= 0.5;
   else if (surf === 'rough' || surf === 'trees') v0 *= 0.5;

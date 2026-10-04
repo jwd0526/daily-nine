@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CLUBS } from './clubs.ts';
 import { generateCourse } from './course.ts';
-import { puttsFor, simulateShot } from './physics.ts';
+import { powerForTotal, puttsFor, rollFraction, simulateShot } from './physics.ts';
 
 const club = (id: string) => CLUBS.find((c) => c.id === id)!;
 const hole = generateCourse('2026-10-02').holes[0];
@@ -44,5 +44,32 @@ describe('trees', () => {
 
   it('still clips it when aimed back through the trunk', () => {
     expect(simulateShot(underTree, { from, heading: Math.PI, club: club('PW'), power: 0.5 }, noScatter).hitTree).toBe(true);
+  });
+});
+
+describe('roll out', () => {
+  const wedge = club('60°');
+
+  it('a full swing rolls only the club amount', () => {
+    expect(rollFraction(wedge, 1)).toBe(wedge.roll);
+  });
+
+  it('softer swings release more', () => {
+    expect(rollFraction(wedge, 0.5)).toBeGreaterThan(rollFraction(wedge, 0.8));
+    expect(rollFraction(wedge, 0.8)).toBeGreaterThan(rollFraction(wedge, 1));
+  });
+
+  it('a 50 yd wedge rolls out several yards, a full one barely', () => {
+    const chip = powerForTotal(wedge, wedge.carry, 50);
+    const chipRoll = wedge.carry * chip * rollFraction(wedge, chip);
+    const fullRoll = wedge.carry * rollFraction(wedge, 1);
+    expect(chipRoll).toBeGreaterThan(5);
+    expect(fullRoll).toBeLessThan(2);
+  });
+
+  it.each([25, 50, 70, 90])('powerForTotal puts carry plus roll on %i yds', (total) => {
+    const p = powerForTotal(wedge, wedge.carry, total);
+    const carry = wedge.carry * p;
+    expect(carry * (1 + rollFraction(wedge, p))).toBeCloseTo(total, 0);
   });
 });

@@ -117,11 +117,13 @@ function contourImages(hole: Hole): ContourImages | null {
     return null;
   }
   const reach = (b: Hole['contours'][number]) => 2.5 * b.r * Math.max(1, b.sx ?? 1);
+  // the contours' reach, but never past the hole itself (broad trends reach far)
+  const hb = hole.bounds;
   const b = {
-    minX: Math.min(...hole.contours.map((q) => q.x - reach(q))),
-    maxX: Math.max(...hole.contours.map((q) => q.x + reach(q))),
-    minY: Math.min(...hole.contours.map((q) => q.y - reach(q))),
-    maxY: Math.max(...hole.contours.map((q) => q.y + reach(q))),
+    minX: Math.max(hb.minX, Math.min(...hole.contours.map((q) => q.x - reach(q)))),
+    maxX: Math.min(hb.maxX, Math.max(...hole.contours.map((q) => q.x + reach(q)))),
+    minY: Math.max(hb.minY, Math.min(...hole.contours.map((q) => q.y - reach(q)))),
+    maxY: Math.min(hb.maxY, Math.max(...hole.contours.map((q) => q.y + reach(q)))),
   };
   const cell = CONTOUR_CELL;
   const cols = Math.ceil((b.maxX - b.minX) / cell) + 1;

@@ -38,6 +38,12 @@ const SAND_CLUBS = new Set(['52°', '56°', '60°']);
 export const FULL_CLUBS = CLUBS;
 export const clubById = (id: string) => CLUBS.find((c) => c.id === id) ?? CLUBS[0];
 
+/** Aim sweep half-angle (radians). Widens up to 1.8x inside 80 yards so short shots need cleaner timing. */
+export function aimConeHalf(club: Club, distToPin: number): number {
+  const closeness = 1 - Math.min(1, Math.max(0, (distToPin - 15) / 65)); // 0 at 80+ yds, 1 inside 15
+  return (club.cone * (1 + 0.8 * closeness) * Math.PI) / 180;
+}
+
 /** Carry multiplier for hitting from a given lie. */
 export function lieCarryFactor(surface: string, club: Club): number {
   switch (surface) {

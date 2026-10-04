@@ -1,5 +1,5 @@
 import {
-  CLUBS, clubForDistance, sprayRadius, windDrift, lieCarryFactor, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
+  CLUBS, aimConeHalf, clubForDistance, sprayRadius, windDrift, lieCarryFactor, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
   geom, type Club, type Course, type Hole, type ShotResult, type Surface, type Vec,
 } from '@golf/gen';
 import { Renderer, fitCamera, type Camera } from './render.ts';
@@ -384,7 +384,7 @@ export class Game {
   }
 
   private coneHalf() {
-    return (this.club.cone * Math.PI) / 180;
+    return aimConeHalf(this.club, geom.dist(this.ball, this.hole.pin));
   }
 
   private aimHeading() {

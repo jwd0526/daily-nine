@@ -26,7 +26,7 @@ export function placeContours(h: HoleDraft, rng: Rng) {
     const p = fairwayPoint(c, s, rng.range(-0.8, 0.8) * f.w);
     const r = rng.range(6, 15);
     if (!clear(p, r)) continue;
-    const height = rng.range(0.3, 1.2) * (rng.chance(0.65) ? 1 : -1);
+    const height = rng.range(0.6, 1.8) * (rng.chance(0.65) ? 1 : -1);
     const stretched = rng.chance(0.4);
     push({
       x: p.x, y: p.y, r, h: height,
@@ -50,7 +50,7 @@ export function placeContours(h: HoleDraft, rng: Rng) {
     // a long rise on the far side of the fairway, so the ground falls toward the hazard
     const p = fairwayPoint(c, s, -side * (f.w + r * 0.3));
     if (!clear(p, r)) continue;
-    push({ x: p.x, y: p.y, r, h: rng.range(0.8, 1.5), sx: rng.range(2, 3), rot: f.heading });
+    push({ x: p.x, y: p.y, r, h: rng.range(1.4, 2.4), sx: rng.range(2, 3), rot: f.heading });
   }
 
   h.contours = out;

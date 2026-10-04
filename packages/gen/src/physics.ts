@@ -80,7 +80,7 @@ export function overswingError(power: number, rand: () => number): number {
 }
 
 const DECEL: Record<Surface, number> = {
-  tee: 3, fairway: 2.2, fringe: 1.5, green: 0.55, rough: 5, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
+  tee: 3, fairway: 1.9, fringe: 1.5, green: 0.55, rough: 5, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
 };
 /** landing speed is sized so a ball rolls carry × rollFraction at this deceleration; lower decels roll further */
 const LAUNCH_DECEL = 3;

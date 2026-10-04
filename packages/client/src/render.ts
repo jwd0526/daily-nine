@@ -171,6 +171,29 @@ function contourImages(hole: Hole): ContourImages | null {
   return out;
 }
 
+/** a point along the centerline with a smoothed normal (pointing right of travel) and the widths there */
+interface StripSample { s: number; p: Vec; n: Vec; w: number; ob: number; fo: number }
+const STRIP_STEP = 2;
+const stripCache = new WeakMap<Hole, StripSample[]>();
+
+/** the hole's centerline resampled every couple of yards, cached; normals use a centered difference so bends stay smooth */
+function strip(hole: Hole): StripSample[] {
+  const cached = stripCache.get(hole);
+  if (cached) return cached;
+  const cl = hole.centerline;
+  const L = cl.s[cl.s.length - 1];
+  const out: StripSample[] = [];
+  for (let s = 0; ; s = Math.min(L, s + STRIP_STEP)) {
+    const f = frameAt(cl, s);
+    const a = frameAt(cl, Math.max(0, s - STRIP_STEP)).p, b = frameAt(cl, Math.min(L, s + STRIP_STEP)).p;
+    const t = geom.norm(geom.sub(b, a));
+    out.push({ s, p: f.p, n: { x: t.y, y: -t.x }, w: f.w, ob: f.ob, fo: f.fo });
+    if (s >= L) break;
+  }
+  stripCache.set(hole, out);
+  return out;
+}
+
 /** How far (yards) the course fades out beyond the out-of-bounds line. */
 const FADE_YARDS = 30;
 const FADE_LAYERS = 28;
@@ -218,7 +241,7 @@ export class Renderer {
   private playArea(hole: Hole, extra: number) {
     const c = this.ctx;
     const k = this.cam.k;
-    this.corridor(hole, (i) => hole.centerline.ob[i] + extra);
+    this.corridor(hole, (q) => q.ob + extra);
     const r = (GREEN_APRON + extra) * k;
     for (const p of hole.green.poly) {
       c.moveTo(this.sx(p) + r, this.sy(p));
@@ -272,38 +295,32 @@ export class Renderer {
   }
 
   /**
-   * Union of capsules along the centerline: matches surfaceAt's distance test.
-   * `offset` shifts the line sideways (positive = right), used for the meandering fairway.
+   * A smooth band along the centerline: one outline polygon (from the hole's cached strip of
+   * smoothed normals) plus round caps at the ends, matching surfaceAt's distance test.
+   * `width` and `offset` (positive = right) are read per sample.
    */
-  private corridor(hole: Hole, width: (i: number) => number, s0 = -Infinity, s1 = Infinity, offset?: (i: number) => number) {
+  private corridor(hole: Hole, width: (q: StripSample) => number, s0 = -Infinity, s1 = Infinity, offset: (q: StripSample) => number = () => 0) {
     const c = this.ctx;
-    const { s } = hole.centerline;
     const k = this.cam.k;
-    const pts = offset
-      ? hole.centerline.pts.map((p, i) => {
-          const f = frameAt(hole.centerline, s[i]);
-          return { x: p.x + f.right.x * offset(i), y: p.y + f.right.y * offset(i) };
-        })
-      : hole.centerline.pts;
-    for (let i = 0; i < pts.length; i++) {
-      if (s[i] < s0 - 5 || s[i] > s1 + 5) continue;
-      const r = width(i) * k;
-      c.moveTo(this.sx(pts[i]) + r, this.sy(pts[i]));
-      c.arc(this.sx(pts[i]), this.sy(pts[i]), r, 0, Math.PI * 2);
-      if (i < pts.length - 1 && s[i + 1] <= s1 + 5) {
-        const a = pts[i], b = pts[i + 1];
-        const f = frameAt(hole.centerline, s[i]);
-        const ra = width(i), rb = width(i + 1);
-        const q = [
-          { x: a.x + f.right.x * ra, y: a.y + f.right.y * ra },
-          { x: b.x + f.right.x * rb, y: b.y + f.right.y * rb },
-          { x: b.x - f.right.x * rb, y: b.y - f.right.y * rb },
-          { x: a.x - f.right.x * ra, y: a.y - f.right.y * ra },
-        ];
-        this.poly(q);
-      }
+    const samples = strip(hole).filter((q) => q.s >= s0 && q.s <= s1);
+    if (samples.length < 2) return;
+    const left: Vec[] = [], right: Vec[] = [];
+    for (const q of samples) {
+      const o = offset(q), w = width(q);
+      left.push({ x: q.p.x + q.n.x * (o - w), y: q.p.y + q.n.y * (o - w) });
+      right.push({ x: q.p.x + q.n.x * (o + w), y: q.p.y + q.n.y * (o + w) });
+    }
+    this.poly([...left, ...right.reverse()]);
+    for (const q of [samples[0], samples[samples.length - 1]]) {
+      const r = width(q) * k;
+      if (r <= 0) continue;
+      const o = offset(q);
+      const p = { x: q.p.x + q.n.x * o, y: q.p.y + q.n.y * o };
+      c.moveTo(this.sx(p) + r, this.sy(p));
+      c.arc(this.sx(p), this.sy(p), r, 0, Math.PI * 2);
     }
   }
+
 
   draw(hole: Hole, biome: Biome, cam: Camera, o: Overlay = {}) {
     this.cam = cam;
@@ -356,7 +373,7 @@ export class Renderer {
       c.save();
       // Width tapers to a rounded nose at each end of a fairway segment, matching surfaceAt.
       c.beginPath();
-      this.corridor(hole, (i) => fairwayWidthAt(hole, cl.s[i], cl.w[i]), hole.fairwayStart, hole.fairwayEnd, (i) => cl.fo?.[i] ?? 0);
+      this.corridor(hole, (q) => fairwayWidthAt(hole, q.s, q.w), hole.fairwayStart - 1, hole.fairwayEnd + 1, (q) => q.fo);
       c.fillStyle = P.fairway;
       c.fill('nonzero');
       c.clip('nonzero');

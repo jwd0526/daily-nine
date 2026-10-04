@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CLUBS } from './clubs.ts';
 import { generateCourse } from './course.ts';
-import { powerForTotal, puttsFor, rollFraction, simulateShot } from './physics.ts';
+import { powerForTotal, puttsFor, ROLL_SCALE, rollFraction, simulateShot } from './physics.ts';
 
 const club = (id: string) => CLUBS.find((c) => c.id === id)!;
 const hole = generateCourse('2026-10-02').holes[0];
@@ -60,16 +60,23 @@ describe('roll out', () => {
   });
 
   it('a 50 yd wedge rolls out several yards, a full one barely', () => {
-    const chip = powerForTotal(wedge, wedge.carry, 50);
+    const chip = powerForTotal(wedge, wedge.carry, 50, 1);
     const chipRoll = wedge.carry * chip * rollFraction(wedge, chip);
     const fullRoll = wedge.carry * rollFraction(wedge, 1);
     expect(chipRoll).toBeGreaterThan(5);
     expect(fullRoll).toBeLessThan(2);
   });
 
-  it.each([25, 50, 70, 90])('powerForTotal puts carry plus roll on %i yds', (total) => {
-    const p = powerForTotal(wedge, wedge.carry, total);
+  it.each([
+    ['green', 25], ['green', 50], ['green', 90], ['fairway', 50], ['fairway', 90],
+  ] as const)('powerForTotal lands on %s and finishes at %i yds', (surface, total) => {
+    const p = powerForTotal(wedge, wedge.carry, total, ROLL_SCALE[surface]);
     const carry = wedge.carry * p;
-    expect(carry * (1 + rollFraction(wedge, p))).toBeCloseTo(total, 0);
+    expect(carry * (1 + rollFraction(wedge, p) * ROLL_SCALE[surface])).toBeCloseTo(total, 0);
+  });
+
+  it('balls roll further than the club alone says on fairways and greens', () => {
+    expect(ROLL_SCALE.fairway).toBeGreaterThan(1);
+    expect(ROLL_SCALE.green).toBeGreaterThan(1);
   });
 });

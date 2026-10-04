@@ -5,8 +5,8 @@
 import type { Hole, Vec } from './types.ts';
 import type { Rng } from './rng.ts';
 import { FULL_CLUBS, clubForDistance, lieCarryFactor, type Club } from './clubs.ts';
-import { dist, headingOf, sub } from './geom.ts';
-import { powerForTotal, puttsFor, resolveShot, simulateShot, windDrift } from './physics.ts';
+import { add, dist, headingOf, norm, scale, sub } from './geom.ts';
+import { powerForTotal, puttsFor, resolveShot, ROLL_SCALE, simulateShot, windDrift } from './physics.ts';
 import { nearestOnCenterline, surfaceAt } from './surface.ts';
 
 export interface BotSkill {
@@ -60,10 +60,23 @@ export function planShot(hole: Hole, ball: Vec, strokeNo: number): PlannedShot {
     const want = dist(ball, aim) * (isPin ? 0.97 : 0.92);
     club = clubForDistance(want, lieCarryFactor(lie, club));
     const full = club.carry * lieCarryFactor(lie, club);
-    // Plan carry + roll to finish at the target (soft swings release more).
-    power = Math.min(1, powerForTotal(club, full, dist(ball, aim) * (isPin ? 1 : 0.97)));
+    // Plan carry + roll to finish at the target: pins land on the green, layups on fairway.
+    power = Math.min(1, powerForTotal(club, full, dist(ball, aim), isPin ? ROLL_SCALE.green : ROLL_SCALE.fairway));
     const drift = windDrift(hole, full * power, club.apex * Math.sqrt(power));
     aim = sub(target, drift);
+  }
+
+  // approaches: if the run-up would land short of the green (fringe, rough, a front bunker), carry it onto the green instead
+  if (isPin) {
+    const full = club.carry * lieCarryFactor(lie, club);
+    const dir = norm(sub(aim, ball));
+    const landing = (carry: number) =>
+      add(add(ball, scale(dir, carry)), windDrift(hole, carry, club.apex * Math.sqrt(carry / full)));
+    if (surfaceAt(hole, landing(full * power)) !== 'green') {
+      for (let carry = full * power; carry <= Math.min(full, dist(ball, aim) + 8); carry += 1) {
+        if (surfaceAt(hole, landing(carry)) === 'green') { power = carry / full; break; }
+      }
+    }
   }
   return { club, heading: headingOf(sub(aim, ball)), power };
 }

@@ -53,11 +53,11 @@ export function rollFraction(club: Club, power: number): number {
 
 /**
  * Power whose carry plus roll covers `total` yards, given a full-swing carry `fullCarry`.
- * Assumes a clean landing (fairway or green roll out about carry × rollFraction).
+ * `rollScale` is where it lands: ROLL_SCALE.green for approaches, ROLL_SCALE.fairway for layups.
  */
-export function powerForTotal(club: Club, fullCarry: number, total: number): number {
+export function powerForTotal(club: Club, fullCarry: number, total: number, rollScale = ROLL_SCALE.green): number {
   let p = Math.min(1.1, total / fullCarry);
-  for (let i = 0; i < 6; i++) p = Math.min(1.1, total / (fullCarry * (1 + rollFraction(club, p))));
+  for (let i = 0; i < 6; i++) p = Math.min(1.1, total / (fullCarry * (1 + rollFraction(club, p) * rollScale)));
   return p;
 }
 
@@ -80,7 +80,16 @@ export function overswingError(power: number, rand: () => number): number {
 }
 
 const DECEL: Record<Surface, number> = {
-  tee: 3, fairway: 3, fringe: 2, green: 0.7, rough: 5, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
+  tee: 3, fairway: 2.2, fringe: 1.5, green: 0.55, rough: 5, trees: 14, waste: 12, bunker: Infinity, water: Infinity, ob: 3,
+};
+/** landing speed is sized so a ball rolls carry × rollFraction at this deceleration; lower decels roll further */
+const LAUNCH_DECEL = 3;
+/** how much of its landing speed a ball keeps when it lands on the green or fringe (the rest is lost to spin and the bounce) */
+const GREEN_LANDING = 0.55;
+/** roll out on a clean landing, as a multiple of carry × rollFraction */
+export const ROLL_SCALE = {
+  fairway: LAUNCH_DECEL / DECEL.fairway,
+  green: (GREEN_LANDING * GREEN_LANDING * LAUNCH_DECEL) / DECEL.green,
 };
 const G = 10.7; // yd/s²
 /** Exaggerates how hard slopes pull a rolling ball on the green, so the break reads clearly. */
@@ -143,9 +152,9 @@ export function simulateShot(hole: Hole, input: ShotInput, rand: () => number = 
   // Roll: speed after landing depends on club and where it lands.
   const travel = sub(landing, from);
   const rollDir = scale(travel, 1 / (len(travel) || 1));
-  let v0 = Math.sqrt(2 * DECEL.fairway * carry * rollFraction(club, power));
+  let v0 = Math.sqrt(2 * LAUNCH_DECEL * carry * rollFraction(club, power));
   if (hitTree) v0 *= 0.15;
-  else if (surf === 'green') v0 *= 0.5;
+  else if (surf === 'green' || surf === 'fringe') v0 *= GREEN_LANDING;
   else if (surf === 'rough' || surf === 'trees') v0 *= 0.5;
   else if (surf === 'bunker') v0 = 0;
   const vel = scale(rollDir, v0);

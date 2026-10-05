@@ -214,6 +214,8 @@ function strip(hole: Hole): StripSample[] {
 /** How far (yards) the course fades out beyond the out-of-bounds line. */
 const FADE_YARDS = 30;
 const FADE_LAYERS = 28;
+/** The fade falloff is smooth, so it is drawn at this fraction of the canvas size and scaled up. */
+const FADE_SCALE = 0.25;
 
 /** Whether canvas `filter: blur()` actually works here (not every browser supports it). */
 const CANVAS_BLUR = (() => {
@@ -238,21 +240,28 @@ export class Renderer {
 
   constructor(public ctx: CanvasRenderingContext2D, public w: number, public h: number) {}
 
-  /** An offscreen layer matching the main canvas size and transform, cleared. */
-  private layer(name: string): CanvasRenderingContext2D {
+  /** An offscreen layer matching the main canvas's coverage and transform (at `scale` of its size), cleared. */
+  private layer(name: string, scale = 1): CanvasRenderingContext2D {
     const main = this.ctx.canvas;
+    const cw = Math.ceil(main.width * scale), ch = Math.ceil(main.height * scale);
     let l = this.layers.get(name);
-    if (!l || l.canvas.width !== main.width || l.canvas.height !== main.height) {
+    if (!l || l.canvas.width !== cw || l.canvas.height !== ch) {
       const cv = document.createElement('canvas');
-      cv.width = main.width;
-      cv.height = main.height;
+      cv.width = cw;
+      cv.height = ch;
       l = cv.getContext('2d')!;
       this.layers.set(name, l);
     }
-    l.setTransform(this.ctx.getTransform());
+    // stretch to the exact pixel ratio so a scaled layer lines up when it is drawn back full size
+    const sx = cw / main.width, sy = ch / main.height;
+    const m = this.ctx.getTransform();
+    l.setTransform(m.a * sx, m.b * sy, m.c * sx, m.d * sy, m.e * sx, m.f * sy);
     l.globalCompositeOperation = 'source-over';
     l.globalAlpha = 1;
-    l.clearRect(0, 0, this.w, this.h);
+    l.save();
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.clearRect(0, 0, cw, ch);
+    l.restore();
     return l;
   }
 
@@ -269,8 +278,8 @@ export class Renderer {
     this.poly(hole.green.poly);
   }
 
-  /** Mask that keeps the play area solid and fades everything beyond it to nothing. */
-  private drawFadeMask(hole: Hole) {
+  /** The soft falloff just beyond the play area, for the (scaled-down) mask layer that is current. */
+  private drawFadeFalloff(hole: Hole) {
     const c = this.ctx;
     const k = this.cam.k;
     c.fillStyle = '#fff';
@@ -292,10 +301,6 @@ export class Renderer {
       }
       c.globalAlpha = 1;
     }
-    // The play area itself (and its boundary line) stays fully solid.
-    c.beginPath();
-    this.playArea(hole, 2 / k);
-    c.fill('nonzero');
   }
 
   private cam: Camera = { cx: 0, cy: 0, k: 1 };
@@ -571,10 +576,21 @@ export class Renderer {
 
     c.restore();
 
-    // Fade the terrain out beyond out of bounds.
+    // Fade the terrain out beyond out of bounds: the soft falloff at low res scaled up, then the solid play area at full res.
     const mask = this.layer('mask');
+    this.ctx = this.layer('maskSoft', FADE_SCALE);
+    this.drawFadeFalloff(hole);
+    mask.save();
+    mask.setTransform(1, 0, 0, 1, 0, 0);
+    mask.imageSmoothingEnabled = true;
+    mask.drawImage(this.ctx.canvas, 0, 0, mask.canvas.width, mask.canvas.height);
+    mask.restore();
     this.ctx = mask;
-    this.drawFadeMask(hole);
+    mask.fillStyle = '#fff';
+    mask.beginPath();
+    this.playArea(hole, 2 / k);
+    mask.fill('nonzero');
+
     scene.save();
     scene.setTransform(1, 0, 0, 1, 0, 0);
     scene.globalCompositeOperation = 'destination-in';

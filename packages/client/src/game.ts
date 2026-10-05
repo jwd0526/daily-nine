@@ -2,7 +2,7 @@ import {
   CLUBS, aimConeHalf, clubForDistance, powerForTotal, sprayRadius, windDrift, lieRange, nearestOnCenterline, puttsFor, resolveShot, simulateShot, surfaceAt,
   geom, type Club, type Course, type Hole, type ShotResult, type Surface, type Vec,
 } from '@golf/gen';
-import { Renderer, fitCamera, type Camera } from './render.ts';
+import { Renderer, fitCamera, stepCamera, type Camera } from './render.ts';
 
 type Phase = 'aim' | 'power' | 'flight' | 'holed' | 'done';
 
@@ -731,11 +731,7 @@ export class Game {
       this.aimCenterShown += diff * (1 - Math.exp(-dt * 18));
     }
 
-    // Ease camera toward its target (zoom in log space).
-    const a = 0.12;
-    this.cam.cx += (this.camTarget.cx - this.cam.cx) * a;
-    this.cam.cy += (this.camTarget.cy - this.cam.cy) * a;
-    this.cam.k = Math.exp(Math.log(this.cam.k) + (Math.log(this.camTarget.k) - Math.log(this.cam.k)) * a);
+    this.cam = stepCamera(this.cam, this.camTarget);
 
     let ball: Vec & { h?: number } = this.ball;
     let trail;

@@ -56,6 +56,21 @@ export function fitCamera(b: { minX: number; minY: number; maxX: number; maxY: n
   return { cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, k: Math.min(w / bw, h / bh) };
 }
 
+/** One frame of camera easing (zoom eases in log space). Snaps onto the target once the remaining move is sub-pixel, so a settled camera really is still. */
+export function stepCamera(cam: Camera, target: Camera, a = 0.12): Camera {
+  const dk = Math.log(target.k) - Math.log(cam.k);
+  if (Math.abs(target.cx - cam.cx) * cam.k < 0.05 && Math.abs(target.cy - cam.cy) * cam.k < 0.05 && Math.abs(dk) < 5e-4) return { ...target };
+  return {
+    cx: cam.cx + (target.cx - cam.cx) * a,
+    cy: cam.cy + (target.cy - cam.cy) * a,
+    k: Math.exp(Math.log(cam.k) + dk * a),
+  };
+}
+
+export function sameCamera(a: Camera, b: Camera): boolean {
+  return a.cx === b.cx && a.cy === b.cy && a.k === b.k;
+}
+
 const BREAK_CELL = 0.75;
 /** Height map color at the lowest point (fades to white at the highest). */
 const LOW = [46, 112, 196];
@@ -218,6 +233,8 @@ export class Renderer {
   /** Page background the course fades into beyond out of bounds. */
   background = '#3a6648';
   private layers = new Map<string, CanvasRenderingContext2D>();
+  /** What the scene layer currently holds. The terrain only repaints when one of these changes. */
+  private sceneKey?: { hole: Hole; biome: Biome; cam: Camera; greenBreak: boolean; w: number; h: number; cw: number; ch: number; background: string };
 
   constructor(public ctx: CanvasRenderingContext2D, public w: number, public h: number) {}
 
@@ -327,8 +344,31 @@ export class Renderer {
   draw(hole: Hole, biome: Biome, cam: Camera, o: Overlay = {}) {
     this.cam = cam;
     const main = this.ctx;
+    const greenBreak = !!o.greenBreak;
+    if (!this.sceneCurrent(hole, biome, cam, greenBreak)) {
+      this.renderScene(hole, biome, greenBreak);
+      this.sceneKey = { hole, biome, cam: { ...cam }, greenBreak, w: this.w, h: this.h, cw: main.canvas.width, ch: main.canvas.height, background: this.background };
+    }
+    main.save();
+    main.setTransform(1, 0, 0, 1, 0, 0);
+    main.globalCompositeOperation = 'copy';
+    main.drawImage(this.layers.get('scene')!.canvas, 0, 0);
+    main.restore();
+    this.drawForeground(hole, o);
+  }
+
+  /** Whether the scene layer already holds this exact view. Anything that changes terrain pixels has to be part of this check. */
+  private sceneCurrent(hole: Hole, biome: Biome, cam: Camera, greenBreak: boolean): boolean {
+    const s = this.sceneKey, cv = this.ctx.canvas;
+    return !!s && s.hole === hole && s.biome === biome && s.greenBreak === greenBreak && s.background === this.background
+      && s.w === this.w && s.h === this.h && s.cw === cv.width && s.ch === cv.height && sameCamera(s.cam, cam);
+  }
+
+  /** Paints the terrain, scenery and the fade beyond out of bounds into the 'scene' layer as a finished, opaque image. */
+  private renderScene(hole: Hole, biome: Biome, greenBreak: boolean) {
+    const main = this.ctx;
     const P = PALETTES[biome];
-    const k = cam.k;
+    const k = this.cam.k;
     const { centerline: cl } = hole;
     const L = cl.s[cl.s.length - 1];
 
@@ -480,7 +520,7 @@ export class Renderer {
     c.fill();
     c.restore();
 
-    if (o.greenBreak) {
+    if (greenBreak) {
       this.drawContourBreak(hole);
       this.drawBreak(hole);
     }
@@ -531,7 +571,7 @@ export class Renderer {
 
     c.restore();
 
-    // Fade the terrain out beyond out of bounds, then composite onto the page background.
+    // Fade the terrain out beyond out of bounds.
     const mask = this.layer('mask');
     this.ctx = mask;
     this.drawFadeMask(hole);
@@ -539,17 +579,13 @@ export class Renderer {
     scene.setTransform(1, 0, 0, 1, 0, 0);
     scene.globalCompositeOperation = 'destination-in';
     scene.drawImage(mask.canvas, 0, 0);
+    // terrain over the page background, so each frame is a single blit
+    scene.globalCompositeOperation = 'destination-over';
+    scene.fillStyle = this.background;
+    scene.fillRect(0, 0, scene.canvas.width, scene.canvas.height);
     scene.restore();
 
     this.ctx = main;
-    main.save();
-    main.setTransform(1, 0, 0, 1, 0, 0);
-    main.fillStyle = this.background;
-    main.fillRect(0, 0, main.canvas.width, main.canvas.height);
-    main.drawImage(scene.canvas, 0, 0);
-    main.restore();
-
-    this.drawForeground(hole, o);
   }
 
   /** Pin, aim, ball and debug marks: drawn on top, never faded. */

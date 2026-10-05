@@ -9,6 +9,8 @@ export interface Club {
   roll: number;
   /** Landing scatter radius (yards) at long range; shrinks closer to the pin. */
   spray: number;
+  /** share of landing speed a full swing keeps (spin): low for wedges, high for woods */
+  check: number;
   /** Half-angle (degrees) of the oscillating aim cone. */
   cone: number;
   /** Seconds for one full aim sweep (left → right → left). */
@@ -16,20 +18,20 @@ export interface Club {
 }
 
 export const CLUBS: Club[] = [
-  { id: 'DR', name: 'Driver', carry: 290, apex: 32, roll: 0.10, spray: 14, cone: 10, sweep: 1.625 },
-  { id: '3W', name: '3 Wood', carry: 260, apex: 30, roll: 0.08, spray: 12, cone: 9.5, sweep: 1.75 },
-  { id: '5W', name: '5 Wood', carry: 235, apex: 30, roll: 0.07, spray: 11, cone: 9, sweep: 1.812 },
-  { id: '4i', name: '4 Iron', carry: 215, apex: 28, roll: 0.06, spray: 9.5, cone: 8.5, sweep: 1.875 },
-  { id: '5i', name: '5 Iron', carry: 202, apex: 29, roll: 0.055, spray: 8.75, cone: 8.25, sweep: 1.913 },
-  { id: '6i', name: '6 Iron', carry: 189, apex: 30, roll: 0.05, spray: 8, cone: 8, sweep: 1.938 },
-  { id: '7i', name: '7 Iron', carry: 176, apex: 31, roll: 0.045, spray: 7.25, cone: 7.75, sweep: 1.975 },
-  { id: '8i', name: '8 Iron', carry: 164, apex: 32, roll: 0.04, spray: 6.5, cone: 7.5, sweep: 2.0 },
-  { id: '9i', name: '9 Iron', carry: 152, apex: 33, roll: 0.035, spray: 5.75, cone: 7.25, sweep: 2.037 },
-  { id: 'PW', name: 'Pitching Wedge', carry: 140, apex: 34, roll: 0.03, spray: 5, cone: 7, sweep: 2.062 },
-  { id: 'GW', name: 'Gap Wedge', carry: 128, apex: 33, roll: 0.025, spray: 4.5, cone: 6.75, sweep: 2.1 },
-  { id: '52°', name: '52° Wedge', carry: 116, apex: 32, roll: 0.02, spray: 4, cone: 6.5, sweep: 2.125 },
-  { id: '56°', name: '56° Wedge', carry: 104, apex: 30, roll: 0.018, spray: 3.5, cone: 6.25, sweep: 2.15 },
-  { id: '60°', name: '60° Wedge', carry: 94, apex: 29, roll: 0.015, spray: 3, cone: 6, sweep: 2.188 },
+  { id: 'DR', name: 'Driver', carry: 290, apex: 32, roll: 0.10, spray: 14, check: 0.9, cone: 10, sweep: 1.625 },
+  { id: '3W', name: '3 Wood', carry: 260, apex: 30, roll: 0.08, spray: 12, check: 0.85, cone: 9.5, sweep: 1.75 },
+  { id: '5W', name: '5 Wood', carry: 235, apex: 30, roll: 0.07, spray: 11, check: 0.8, cone: 9, sweep: 1.812 },
+  { id: '4i', name: '4 Iron', carry: 215, apex: 28, roll: 0.06, spray: 9.5, check: 0.7, cone: 8.5, sweep: 1.875 },
+  { id: '5i', name: '5 Iron', carry: 202, apex: 29, roll: 0.055, spray: 8.75, check: 0.65, cone: 8.25, sweep: 1.913 },
+  { id: '6i', name: '6 Iron', carry: 189, apex: 30, roll: 0.05, spray: 8, check: 0.6, cone: 8, sweep: 1.938 },
+  { id: '7i', name: '7 Iron', carry: 176, apex: 31, roll: 0.045, spray: 7.25, check: 0.55, cone: 7.75, sweep: 1.975 },
+  { id: '8i', name: '8 Iron', carry: 164, apex: 32, roll: 0.04, spray: 6.5, check: 0.5, cone: 7.5, sweep: 2.0 },
+  { id: '9i', name: '9 Iron', carry: 152, apex: 33, roll: 0.035, spray: 5.75, check: 0.45, cone: 7.25, sweep: 2.037 },
+  { id: 'PW', name: 'Pitching Wedge', carry: 140, apex: 34, roll: 0.03, spray: 5, check: 0.4, cone: 7, sweep: 2.062 },
+  { id: 'GW', name: 'Gap Wedge', carry: 128, apex: 33, roll: 0.025, spray: 4.5, check: 0.37, cone: 6.75, sweep: 2.1 },
+  { id: '52°', name: '52° Wedge', carry: 116, apex: 32, roll: 0.02, spray: 4, check: 0.35, cone: 6.5, sweep: 2.125 },
+  { id: '56°', name: '56° Wedge', carry: 104, apex: 30, roll: 0.018, spray: 3.5, check: 0.32, cone: 6.25, sweep: 2.15 },
+  { id: '60°', name: '60° Wedge', carry: 94, apex: 29, roll: 0.015, spray: 3, check: 0.3, cone: 6, sweep: 2.188 },
 ];
 
 

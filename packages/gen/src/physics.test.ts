@@ -3,7 +3,7 @@ import { CLUBS } from './clubs.ts';
 import { generateCourse } from './course.ts';
 import { lieRange } from './clubs.ts';
 import { surfaceAt } from './surface.ts';
-import { powerForTotal, puttsFor, ROLL_SCALE, rollFraction, simulateShot } from './physics.ts';
+import { powerForTotal, puttsFor, rollFraction, rollScale, simulateShot } from './physics.ts';
 
 const club = (id: string) => CLUBS.find((c) => c.id === id)!;
 const hole = generateCourse('2026-10-02').holes[0];
@@ -85,24 +85,39 @@ describe('roll out', () => {
     expect(rollFraction(wedge, 0.8)).toBeGreaterThan(rollFraction(wedge, 1));
   });
 
-  it('a 50 yd wedge rolls out several yards, a full one barely', () => {
-    const chip = powerForTotal(wedge, wedge.carry, 50, 1);
-    const chipRoll = wedge.carry * chip * rollFraction(wedge, chip);
-    const fullRoll = wedge.carry * rollFraction(wedge, 1);
-    expect(chipRoll).toBeGreaterThan(5);
-    expect(fullRoll).toBeLessThan(2);
+  it('a 50 yd wedge onto the green releases a few yards, a full one barely moves', () => {
+    const roll = (p: number) => wedge.carry * p * rollFraction(wedge, p) * rollScale(wedge, p, 'green');
+    expect(roll(powerForTotal(wedge, wedge.carry, 50, 'green'))).toBeGreaterThan(3);
+    expect(roll(1)).toBeLessThan(1);
   });
 
   it.each([
     ['green', 25], ['green', 50], ['green', 90], ['fairway', 50], ['fairway', 90],
   ] as const)('powerForTotal lands on %s and finishes at %i yds', (surface, total) => {
-    const p = powerForTotal(wedge, wedge.carry, total, ROLL_SCALE[surface]);
+    const p = powerForTotal(wedge, wedge.carry, total, surface);
     const carry = wedge.carry * p;
-    expect(carry * (1 + rollFraction(wedge, p) * ROLL_SCALE[surface])).toBeCloseTo(total, 0);
+    expect(carry * (1 + rollFraction(wedge, p) * rollScale(wedge, p, surface))).toBeCloseTo(total, 0);
+  });
+});
+
+describe('spin on landing', () => {
+  const ids = ['DR', '5W', '4i', '7i', 'PW', '60°'];
+
+  it.each(['green', 'fairway'] as const)('on the %s, lower-lofted clubs keep more roll than wedges', (surface) => {
+    const scales = ids.map((id) => rollScale(club(id), 1, surface));
+    for (let i = 1; i < scales.length; i++) expect(scales[i]).toBeLessThan(scales[i - 1]);
   });
 
-  it('balls roll further than the club alone says on fairways and greens', () => {
-    expect(ROLL_SCALE.fairway).toBeGreaterThan(1);
-    expect(ROLL_SCALE.green).toBeGreaterThan(1);
+  it('a full iron landing on the green stops within a few yards, not over the back', () => {
+    for (const id of ['7i', '9i', 'PW']) {
+      const c = club(id);
+      const roll = c.carry * rollFraction(c, 1) * rollScale(c, 1, 'green');
+      expect(roll, id).toBeLessThan(8);
+    }
+  });
+
+  it('a softer swing spins less, so it releases more than a full one', () => {
+    const w = club('60°');
+    expect(rollScale(w, 0.5, 'green')).toBeGreaterThan(rollScale(w, 1, 'green'));
   });
 });

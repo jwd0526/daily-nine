@@ -14,6 +14,8 @@ interface Saved {
 }
 
 const MAX_POWER = 1.1;
+/** Phones report 3x; past 2x the canvas costs a lot of fill rate for little you can see. */
+const MAX_DPR = 2;
 
 const EYE_PATHS = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
 const svgIcon = (inner: string) =>
@@ -267,7 +269,7 @@ export class Game {
 
   private resize() {
     const rect = this.stage.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     this.canvas.width = Math.round(rect.width * dpr);
     this.canvas.height = Math.round(rect.height * dpr);
     this.renderer.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

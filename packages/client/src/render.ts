@@ -1,4 +1,4 @@
-import type { Biome, Hole, Poly, Vec, PathPoint, SceneryKind } from '@golf/gen';
+import type { Biome, Hole, Poly, Tree, Vec, PathPoint, SceneryKind } from '@golf/gen';
 import { frameAt, fairwaySegments, fairwayWidthAt, greenGradient, greenHeight, terrainGradient, terrainHeight, TEE_BOX, PUTT_RINGS, MAX_PUTTS, GREEN_APRON, geom } from '@golf/gen';
 
 interface Palette {
@@ -209,6 +209,18 @@ function strip(hole: Hole): StripSample[] {
   }
   stripCache.set(hole, out);
   return out;
+}
+
+const treeCache = new WeakMap<Hole, Tree[]>();
+
+/** the hole's trees far to near (so nearer canopies overlap), sorted once and cached */
+function treesBackToFront(hole: Hole): Tree[] {
+  let sorted = treeCache.get(hole);
+  if (!sorted) {
+    sorted = hole.trees.slice().sort((a, b) => b.y - a.y);
+    treeCache.set(hole, sorted);
+  }
+  return sorted;
 }
 
 /** How far (yards) the course fades out beyond the out-of-bounds line. */
@@ -557,8 +569,7 @@ export class Renderer {
     }
 
     // Trees, back to front so nearer canopies overlap.
-    const trees = hole.trees.slice().sort((a, b) => b.y - a.y);
-    for (const t of trees) {
+    for (const t of treesBackToFront(hole)) {
       const x = this.sx(t), y = this.sy(t), r = t.r * k;
       if (x < -r * 2 || x > this.w + r * 2 || y < -r * 2 || y > this.h + r * 2) continue;
       c.fillStyle = 'rgba(30,45,32,0.22)';

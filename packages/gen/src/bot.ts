@@ -6,7 +6,7 @@ import type { Hole, Vec } from './types.ts';
 import type { Rng } from './rng.ts';
 import { FULL_CLUBS, lieMid, type Club } from './clubs.ts';
 import { add, dist, headingOf, norm, scale, sub } from './geom.ts';
-import { powerForTotal, puttsFor, resolveShot, ROLL_SCALE, simulateShot, windDrift } from './physics.ts';
+import { powerForTotal, puttsFor, resolveShot, simulateShot, windDrift } from './physics.ts';
 import { nearestOnCenterline, surfaceAt } from './surface.ts';
 
 export interface BotSkill {
@@ -65,7 +65,7 @@ export function planShot(hole: Hole, ball: Vec, strokeNo: number): PlannedShot {
     club = pick(want);
     const full = reachOf(club);
     // Plan carry + roll to finish at the target: pins land on the green, layups on fairway.
-    power = Math.min(1, powerForTotal(club, full, dist(ball, aim), isPin ? ROLL_SCALE.green : ROLL_SCALE.fairway));
+    power = Math.min(1, powerForTotal(club, full, dist(ball, aim), isPin ? 'green' : 'fairway'));
     const drift = windDrift(hole, full * power, club.apex * Math.sqrt(power));
     aim = sub(target, drift);
   }

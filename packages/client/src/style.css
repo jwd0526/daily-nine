@@ -76,18 +76,18 @@ button { font: inherit; color: inherit; }
 .wind { display: inline-flex; align-items: center; gap: 6px; }
 .wind svg { width: 20px; height: 20px; filter: drop-shadow(0 1px 4px rgba(10, 25, 16, 0.7)); }
 
-.toast { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); background: var(--glass); border: 1px solid var(--line-strong); box-shadow: 0 6px 24px rgba(5, 15, 10, 0.3); color: var(--ink); padding: 12px 22px; border-radius: 14px; font-family: var(--serif); font-size: 22px; pointer-events: none; opacity: 0; transition: opacity 0.25s; text-align: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.toast { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); background: var(--glass); border: 1px solid var(--line-strong); box-shadow: 0 6px 24px rgba(5, 15, 10, 0.3); color: var(--ink); padding: 12px 22px; border-radius: 14px; font-family: var(--serif); font-size: 22px; pointer-events: none; opacity: 0; transition: opacity 0.25s; text-align: center; }
 .toast.show { opacity: 1; }
 .toast small { display: block; font-family: var(--sans); font-size: 10px; font-weight: 600; letter-spacing: 0.2em; color: var(--muted); margin-top: 4px; text-transform: uppercase; }
 
 .map-controls { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 8px; }
-.map-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 20px; line-height: 1; cursor: pointer; color: var(--ink); }
+.map-btn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--glass); font-size: 20px; line-height: 1; cursor: pointer; color: var(--ink); }
 .map-btn:hover { border-color: rgba(225, 238, 222, 0.35); }
 .map-btn.active { border-color: var(--accent-bright); color: var(--accent-bright); background: rgba(143, 211, 165, 0.18); }
 .stage.dragging, .stage.dragging canvas { cursor: grab; }
 .stage.dragging canvas:active { cursor: grabbing; }
 
-.legend { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.legend { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line); background: var(--glass); pointer-events: none; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .legend-row { display: flex; align-items: center; gap: 8px; }
 .legend-row svg { width: 28px; height: 8px; flex: none; }
 .legend-topo { display: none; flex-direction: column; align-items: stretch; gap: 3px; padding-top: 2px; }
@@ -137,7 +137,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* Overlay */
-.overlay { position: absolute; inset: 0; background: rgba(27, 51, 38, 0.93); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+.overlay { position: absolute; inset: 0; background: rgba(27, 51, 38, 0.93); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
 .overlay h2 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 34px; }
 .overlay p { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.2em; }
 .overlay .result { font-family: var(--serif); font-size: 64px; line-height: 1; color: var(--gold); }
